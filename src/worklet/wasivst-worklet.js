@@ -1,34 +1,23 @@
-
-const FRAME_TAG = {
-  LOAD:           0x01,
-  PROCESS:        0x02,
-  PROCESS_RESP:   0x03,
-  SET_PARAM:      0x04,
-  GET_PARAM:      0x05,
-  GET_PARAM_RESP: 0x06,
-  LOG:            0x07,
-};
+const FRAME_TAG = { LOAD: 0x01, PROCESS: 0x02, PROCESS_RESP: 0x03, SET_PARAM: 0x04, GET_PARAM: 0x05, GET_PARAM_RESP: 0x06, LOG: 0x07 };
 
 class WasivstProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super(options);
-
     this._ready = false;
     this._rxBuf = [];
     this._v86 = null;
-
-    const { libv86Url, rootfsUrl } = options.processorOptions ?? {};
+    const { libv86Url, rootfsUrl, rootfsPartsUrl } = options.processorOptions ?? {};
     if (!libv86Url || !rootfsUrl) throw new Error('wasivst: libv86Url and rootfsUrl required');
-
-    this._init(libv86Url, rootfsUrl);
+    this._init(libv86Url, rootfsUrl, rootfsPartsUrl);
     this.port.onmessage = (e) => this._onMessage(e.data);
   }
 
-  async _init(libv86Url, rootfsUrl) {
+  async _init(libv86Url, rootfsUrl, rootfsPartsUrl) {
     const { V86 } = await import(libv86Url);
 
-    const rootfsResp = await fetch(rootfsUrl);
-    const rootfsBuffer = await rootfsResp.arrayBuffer();
+    const rootfsBuffer = rootfsPartsUrl
+      ? await this._fetchParts(rootfsPartsUrl)
+      : await fetch(rootfsUrl).then(r => r.arrayBuffer());
 
     const wasmUrl = libv86Url.replace('libv86.mjs', 'wasivst-qemu.wasm');
 
@@ -183,6 +172,17 @@ class WasivstProcessor extends AudioWorkletProcessor {
     buf[0] = FRAME_TAG.GET_PARAM;
     new DataView(buf.buffer).setUint32(1, id, true);
     return buf;
+  }
+
+  async _fetchParts(partsUrl) {
+    const parts = await fetch(partsUrl).then(r => r.json());
+    const base = partsUrl.replace(/[^/]+$/, '');
+    const buffers = await Promise.all(parts.map(n => fetch(base + n).then(r => r.arrayBuffer())));
+    const total = buffers.reduce((n, b) => n + b.byteLength, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const b of buffers) { out.set(new Uint8Array(b), off); off += b.byteLength; }
+    return out.buffer;
   }
 
   _serialWrite(bytes) {

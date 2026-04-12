@@ -2,6 +2,17 @@
 
 ## [Unreleased] - 2026-04-12
 
+### Added
+- Split rootfs.ext4 into 50MB parts in CI for GitHub Pages compatibility
+  - `split -b 50m` produces `rootfs.ext4.part-*` files + `rootfs.parts.json` manifest
+  - wasivst-worklet.js fetches parts manifest then reassembles via `_fetchParts()`
+  - Falls back to monolithic `rootfs.ext4` if no parts manifest found
+- VST integration test CI job: downloads Dexed v0.9.8 (free 64-bit VST3), boots it in Playwright/Chrome
+  - `vst-integration-test.mjs`: calls `WasiVST.load()` with 120s timeout, verifies boot state
+  - Runs in parallel with `bundle-and-publish` (both depend on `build-qemu-wasm`)
+
+## [Unreleased] - 2026-04-12
+
 ### Changed
 - Replaced Emscripten/QEMU WASM compilation with pre-built v86 npm package (v0.5.319)
   - v86 is an x86-64 PC emulator distributed as pre-built WASM via npm — no Emscripten toolchain required

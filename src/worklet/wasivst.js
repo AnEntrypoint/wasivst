@@ -2,6 +2,7 @@
 const WORKLET_URL = new URL('./wasivst-worklet.js', import.meta.url).href;
 const LIBV86_URL = new URL('./libv86.mjs', import.meta.url).href;
 const ROOTFS_URL = new URL('./rootfs.ext4', import.meta.url).href;
+const ROOTFS_PARTS_URL = new URL('./rootfs.parts.json', import.meta.url).href;
 
 window.__wasivst = window.__wasivst ?? { logs: [], instances: {}, serial: {} };
 
@@ -21,7 +22,7 @@ export class WasiVST {
     await audioCtx.audioWorklet.addModule(WORKLET_URL);
 
     const node = new AudioWorkletNode(audioCtx, 'wasivst-processor', {
-      processorOptions: { libv86Url: LIBV86_URL, rootfsUrl: ROOTFS_URL },
+      processorOptions: { libv86Url: LIBV86_URL, rootfsUrl: ROOTFS_URL, rootfsPartsUrl: ROOTFS_PARTS_URL },
       numberOfInputs: 1,
       numberOfOutputs: 1,
       outputChannelCount: [2],

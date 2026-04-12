@@ -89,6 +89,17 @@ jobs:
           cp /tmp/v86-extract/build/libv86.mjs dist/libv86.mjs
           cp rootfs.ext4 dist/rootfs.ext4
 
+      - name: Split rootfs into 50MB parts for GitHub Pages
+        run: |
+          cd dist
+          split -b 50m rootfs.ext4 rootfs.ext4.part-
+          python3 -c "
+          import os, json
+          parts = sorted(f for f in os.listdir('.') if f.startswith('rootfs.ext4.part-'))
+          print(json.dumps(parts))
+          " > rootfs.parts.json
+          rm rootfs.ext4
+
       - name: Upload QEMU WASM artifact
         uses: actions/upload-artifact@v4
         with:
@@ -139,6 +150,40 @@ jobs:
       - name: Deploy Pages
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions/deploy-pages@v4
+
+  vst-integration-test:
+    name: VST integration test (Dexed)
+    runs-on: ubuntu-22.04
+    needs: [build-qemu-wasm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download QEMU WASM
+        uses: actions/download-artifact@v4
+        with:
+          name: qemu-wasm
+          path: dist/
+
+      - name: Copy worklet JS
+        run: |
+          cp src/worklet/wasivst.js dist/wasivst.js
+          cp src/worklet/wasivst-worklet.js dist/wasivst-worklet.js
+          printf '<!doctype html><html><body></body></html>' > dist/index.html
+
+      - name: Download Dexed VST3 (Windows 64-bit)
+        run: |
+          curl -L -o /tmp/dexed-win.zip \
+            https://github.com/asb2m10/dexed/releases/download/v0.9.8/dexed-0.9.8-win.zip
+          unzip -o /tmp/dexed-win.zip -d /tmp/dexed
+          find /tmp/dexed -name 'Dexed.dll' | head -1 | xargs -I{} cp {} dist/Dexed.dll
+
+      - name: Install dev dependencies
+        run: npm install
+
+      - name: Run VST integration test (headless Chrome)
+        run: |
+          npx playwright install chromium
+          node src/worklet/vst-integration-test.mjs
 
   smoke-test:
     name: Smoke test in browser
