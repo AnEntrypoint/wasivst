@@ -196,23 +196,3 @@ jobs:
         run: |
           npx playwright install chromium
           node src/worklet/vst-integration-test.mjs
-
-  smoke-test:
-    name: Smoke test in browser
-    runs-on: ubuntu-22.04
-    needs: [bundle-and-publish]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download dist
-        uses: actions/download-artifact@v4
-        with:
-          name: qemu-wasm
-          path: dist/
-      - name: Install dev dependencies
-        run: npm install
-      - run: |
-          cp src/worklet/wasivst.js dist/
-          cp src/worklet/wasivst-worklet.js dist/
-          printf '<!doctype html><html><body></body></html>' > dist/index.html
-          npx playwright install chromium
-          node src/worklet/smoke-test.mjs

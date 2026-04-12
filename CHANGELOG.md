@@ -10,6 +10,7 @@
     - Fixed reload: listens for `activated` state on installing SW, reloads if already active on re-visit
   - CI bundles MDA TestTone VST2 (from studiorack/mda v1.0.4) as default demo plugin: `mda-TestTone.dll`
   - mda-win.zip v1.0.4 does not contain Piano; uses TestTone (tone generator, present in zip) instead
+- Removed duplicate `smoke-test` CI job (bundle-and-publish already runs smoke test)
 - Split rootfs.ext4 into 50MB parts in CI for GitHub Pages compatibility
   - `split -b 50m` produces `rootfs.ext4.part-*` files + `rootfs.parts.json` manifest
   - wasivst-worklet.js fetches parts manifest then reassembles via `_fetchParts()`
