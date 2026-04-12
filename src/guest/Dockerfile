@@ -5,8 +5,7 @@ RUN apk add --no-cache \
     e2fsprogs \
     busybox-static
 
-COPY init /sbin/init
-RUN chmod +x /sbin/init
+RUN printf '#!/bin/sh\nmount -t proc proc /proc\nmount -t sysfs sysfs /sys\nmount -t devtmpfs devtmpfs /dev\nexec wine /usr/bin/wasivst-host.exe < /dev/vport0p0 > /dev/vport0p0\n' > /sbin/init && chmod +x /sbin/init
 
 COPY wasivst-host-placeholder.exe /usr/bin/wasivst-host.exe
 
