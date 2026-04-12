@@ -275,6 +275,12 @@ This runs the plugin in a local QEMU instance without a browser.
    _setmode(_fileno(stdout), _O_BINARY);
    ```
 
+9. **npm pack v86 requires pre-created destination dir.** `npm pack v86 --pack-destination /tmp/v86-pack` fails if `/tmp/v86-pack` does not exist. Create the directory first: `mkdir -p /tmp/v86-pack && npm pack v86 --pack-destination /tmp/v86-pack`.
+
+10. **Docker rootfs build: busybox-static /sbin/init hard-link trap.** busybox-static creates `/sbin/init` as a hard-link to `/bin/busybox`. If you `printf > /sbin/init` while the container is running `/bin/sh` (which shares the same inode), you get ETXTBSY ("text file busy"). Fix: `rm -f /sbin/init` before writing the new init script to unlink the directory entry.
+
+11. **docker create on FROM scratch requires explicit command.** `docker create --name tmp wasivst-guest` fails on FROM scratch images because the image has no default CMD. Even if the container never runs, you must provide a command arg: `docker create --name tmp wasivst-guest /null`. The arg is never executed (the create is immediate), but it is syntactically required.
+
 ## Roadmap & Known Limitations
 
 ### Remaining PRD Items
