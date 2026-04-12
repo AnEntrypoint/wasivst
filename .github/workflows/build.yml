@@ -177,7 +177,7 @@ jobs:
           curl -L -o /tmp/surge-pluginsonly.zip "$ASSET_URL"
           mkdir -p /tmp/surge
           unzip -o /tmp/surge-pluginsonly.zip -d /tmp/surge
-          find /tmp/surge -name 'Surge XT.dll' -path '*/x86_64-win/*' | head -1 | xargs -I{} cp {} dist/SurgeXT.dll
+          find /tmp/surge/Surge\ XT.vst3/Contents/x86_64-win -type f | head -1 | xargs -I{} cp {} dist/SurgeXT.dll
           test -f dist/SurgeXT.dll || (echo "SurgeXT.dll not found" && find /tmp/surge -type f | head -30 && exit 1)
 
       - name: Install dev dependencies
