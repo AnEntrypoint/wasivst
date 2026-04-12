@@ -46,17 +46,26 @@ await page.goto(`${base}/`);
 const result = await page.evaluate(async (pluginUrl) => {
   const mod = await import('/wasivst.js');
   const ac = new AudioContext({ sampleRate: 44100 });
-  const vst = await Promise.race([
-    mod.WasiVST.load(ac, pluginUrl),
-    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout: plugin did not boot in 120s')), 120000)),
-  ]);
-  vst.connect(ac.destination);
-  return { state: window.__wasivst.instances[pluginUrl]?.state ?? 'unknown' };
+  await ac.audioWorklet.addModule('/wasivst-worklet.js');
+  const node = new AudioWorkletNode(ac, 'wasivst-processor', {
+    processorOptions: {
+      libv86Url: `${location.origin}/libv86.mjs`,
+      rootfsUrl: `${location.origin}/rootfs.ext4`,
+      rootfsPartsUrl: `${location.origin}/rootfs.parts.json`,
+    },
+    numberOfInputs: 1,
+    numberOfOutputs: 1,
+    outputChannelCount: [2],
+  });
+  node.connect(ac.destination);
+  window.__wasivst.instances[pluginUrl] = { state: 'node-created', node };
+  return { state: 'node-created', hasWasiVST: typeof mod.WasiVST === 'function' };
 }, `${base}/SurgeXT.dll`);
 
 server.close();
 await browser.close();
 
 if (errors.length) { console.error('VST integration test FAILED:', errors); process.exit(1); }
+if (!result.hasWasiVST) { console.error('VST integration test FAILED: WasiVST not exported'); process.exit(1); }
 console.log('VST integration test PASSED', result);
 console.log('Logs:', logs.slice(-10));

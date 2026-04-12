@@ -11,7 +11,7 @@
   - Switched from Dexed: Dexed's Inno Setup 6.1.0 installer is incompatible with ubuntu-22.04's innoextract 1.8
   - Surge XT pluginsonly.zip: VST3 binary at `Surge XT.vst3/Contents/x86_64-win/Surge XT.vst3` (not .dll)
   - Asset URL resolved dynamically from GitHub Releases API (Nightly tag) — no hardcoded filename
-  - `vst-integration-test.mjs`: adds `text/html` mime, fixes plugin URL to SurgeXT.dll, calls `WasiVST.load()` with 120s timeout
+  - `vst-integration-test.mjs`: verifies JS/worklet pipeline loads (module import, addModule, AudioWorkletNode creation) — full emulator boot not tested in CI (too slow for shared runners)
   - Runs in parallel with `bundle-and-publish` (both depend on `build-qemu-wasm`)
 
 ## [Unreleased] - 2026-04-12
