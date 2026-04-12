@@ -10,7 +10,7 @@ const dist = join(__dir, '../../dist');
 const server = createServer((req, res) => {
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-  const safe = req.url.replace(/\.\./g, '');
+  const safe = req.url === '/' ? '/index.html' : req.url.replace(/\.\./g, '');
   try {
     const body = readFileSync(join(dist, safe));
     const ct = safe.endsWith('.js') ? 'application/javascript'

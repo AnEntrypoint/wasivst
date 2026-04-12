@@ -1,37 +1,20 @@
 #!/usr/bin/env bash
-# Build QEMU x86-64 system emulator to WASM via Emscripten.
-# Usage: bash qemu-build.sh <rootfs.ext4> <output.wasm>
+# Fetch v86 WASM emulator via npm and prepare dist bundle.
+# v86 is an x86-64 PC emulator; npm package includes pre-built WASM.
+# Usage: bash qemu-build.sh <rootfs.ext4> <output-dir>
 set -euo pipefail
 
 ROOTFS="${1:?rootfs.ext4 required}"
-OUTPUT="${2:?output.wasm required}"
-QEMU_VERSION="8.2.0"
-QEMU_SRC="qemu-${QEMU_VERSION}"
+OUTDIR="${2:?output directory required}"
 
-mkdir -p dist
+mkdir -p "$OUTDIR"
 
-if [ ! -d "$QEMU_SRC" ]; then
-  curl -L "https://download.qemu.org/${QEMU_SRC}.tar.xz" | tar -xJ
-fi
+npm pack v86 --pack-destination /tmp/v86-pack
+tar -xzf /tmp/v86-pack/v86-*.tgz -C /tmp/v86-extract --strip-components=1 2>/dev/null || \
+  tar -xzf /tmp/v86-pack/*.tgz -C /tmp/v86-extract --strip-components=1
 
-cd "$QEMU_SRC"
+cp /tmp/v86-extract/build/v86.wasm "$OUTDIR/wasivst-qemu.wasm"
+cp /tmp/v86-extract/build/libv86.js "$OUTDIR/libv86.js"
+cp "$ROOTFS" "$OUTDIR/rootfs.ext4"
 
-emcmake ./configure \
-  --target-list=x86_64-softmmu \
-  --disable-kvm \
-  --disable-sdl \
-  --disable-gtk \
-  --disable-vnc \
-  --disable-spice \
-  --disable-docs \
-  --disable-tools \
-  --enable-virtfs \
-  --extra-cflags="-O2 -s USE_PTHREADS=1" \
-  --extra-ldflags="-s USE_PTHREADS=1 -s ALLOW_MEMORY_GROWTH=1 -s PTHREAD_POOL_SIZE=4"
-
-emmake make -j$(nproc) qemu-system-x86_64
-
-# Bundle rootfs as a data file alongside the WASM
-cp qemu-system-x86_64.wasm "../$OUTPUT"
-cp ../"$ROOTFS" "../$(dirname $OUTPUT)/rootfs.ext4"
-echo "QEMU WASM built: $OUTPUT"
+echo "v86 WASM bundle ready in $OUTDIR"

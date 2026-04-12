@@ -79,28 +79,21 @@ jobs:
         with:
           name: rootfs
 
-      - name: Cache Emscripten
-        uses: actions/cache@v4
-        with:
-          path: ~/.emscripten_cache
-          key: emscripten-3.1.50-qemu-${{ hashFiles('src/guest/qemu-build.sh') }}
-
-      - name: Install Emscripten
+      - name: Fetch v86 WASM emulator and bundle rootfs
         run: |
-          git clone --depth=1 https://github.com/emscripten-core/emsdk.git /opt/emsdk
-          /opt/emsdk/emsdk install 3.1.50
-          /opt/emsdk/emsdk activate 3.1.50
-
-      - name: Build QEMU WASM
-        run: |
-          source /opt/emsdk/emsdk_env.sh
-          bash src/guest/qemu-build.sh rootfs.ext4 dist/wasivst-qemu.wasm
+          mkdir -p /tmp/v86-extract
+          npm pack v86 --pack-destination /tmp/v86-pack
+          tar -xzf /tmp/v86-pack/*.tgz -C /tmp/v86-extract --strip-components=1
+          mkdir -p dist
+          cp /tmp/v86-extract/build/v86.wasm dist/wasivst-qemu.wasm
+          cp /tmp/v86-extract/build/libv86.js dist/libv86.js
+          cp rootfs.ext4 dist/rootfs.ext4
 
       - name: Upload QEMU WASM artifact
         uses: actions/upload-artifact@v4
         with:
           name: qemu-wasm
-          path: dist/wasivst-qemu.wasm
+          path: dist/
 
   bundle-and-publish:
     name: Bundle JS + WASM and publish
@@ -119,6 +112,10 @@ jobs:
         run: |
           cp src/worklet/wasivst.js dist/wasivst.js
           cp src/worklet/wasivst-worklet.js dist/wasivst-worklet.js
+          printf '<!doctype html><html><body></body></html>' > dist/index.html
+
+      - name: Install dev dependencies
+        run: npm install
 
       - name: Smoke test (headless Chrome)
         run: |
@@ -154,7 +151,11 @@ jobs:
         with:
           name: qemu-wasm
           path: dist/
+      - name: Install dev dependencies
+        run: npm install
       - run: |
           cp src/worklet/wasivst.js dist/
           cp src/worklet/wasivst-worklet.js dist/
+          printf '<!doctype html><html><body></body></html>' > dist/index.html
+          npx playwright install chromium
           node src/worklet/smoke-test.mjs
