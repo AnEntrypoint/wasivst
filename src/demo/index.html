@@ -6,12 +6,17 @@
 <script>
 if (!crossOriginIsolated) {
   navigator.serviceWorker.register('coi-serviceworker.js').then(reg => {
-    reg.addEventListener('updatefound', () => {
+    if (reg.installing) {
       reg.installing.addEventListener('statechange', e => {
         if (e.target.state === 'activated') location.reload();
       });
-    });
-    if (reg.active) location.reload();
+    } else if (reg.waiting) {
+      reg.waiting.addEventListener('statechange', e => {
+        if (e.target.state === 'activated') location.reload();
+      });
+    } else {
+      location.reload();
+    }
   });
 }
 </script>

@@ -7,7 +7,7 @@
   - `src/demo/index.html`: plugin URL input defaulting to bundled MDA TestTone (`mda-TestTone.dll`, VST2), load button, status + log display
   - `src/demo/coi-serviceworker.js`: service worker injects COOP/COEP headers on GH Pages (required for SharedArrayBuffer)
     - Fixed SW registration to use relative path (works under /wasivst/ subpath)
-    - Fixed reload: listens for `activated` state on installing SW, reloads if already active on re-visit
+    - Fixed reload: listens for `activated` state on installing/waiting SW; reloads once if already active; guarded by `crossOriginIsolated` to prevent infinite loop
   - CI bundles MDA TestTone VST2 (from studiorack/mda v1.0.4) as default demo plugin: `mda-TestTone.dll`
   - mda-win.zip v1.0.4 does not contain Piano; uses TestTone (tone generator, present in zip) instead
 - Removed duplicate `smoke-test` CI job (bundle-and-publish already runs smoke test)
