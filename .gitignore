@@ -5,3 +5,4 @@ dist/
 *.o
 node_modules/
 .prd
+.codeinsight
