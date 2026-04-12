@@ -110,6 +110,12 @@ jobs:
     name: Bundle JS + WASM and publish
     runs-on: ubuntu-22.04
     needs: [build-qemu-wasm]
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 
@@ -158,6 +164,7 @@ jobs:
 
       - name: Deploy Pages
         if: github.ref == 'refs/heads/main'
+        id: deploy
         uses: actions/deploy-pages@v4
 
   vst-integration-test:
@@ -166,19 +173,16 @@ jobs:
     needs: [build-qemu-wasm]
     steps:
       - uses: actions/checkout@v4
-
       - name: Download QEMU WASM
         uses: actions/download-artifact@v4
         with:
           name: qemu-wasm
           path: dist/
-
       - name: Copy worklet JS
         run: |
           cp src/worklet/wasivst.js dist/wasivst.js
           cp src/worklet/wasivst-worklet.js dist/wasivst-worklet.js
           printf '<!doctype html><html><body></body></html>' > dist/index.html
-
       - name: Download Surge XT VST3 (Windows 64-bit, pluginsonly zip)
         run: |
           ASSET_URL=$(curl -s https://api.github.com/repos/surge-synthesizer/surge/releases/tags/Nightly \
@@ -188,10 +192,8 @@ jobs:
           unzip -o /tmp/surge-pluginsonly.zip -d /tmp/surge
           find /tmp/surge/Surge\ XT.vst3/Contents/x86_64-win -type f | head -1 | xargs -I{} cp {} dist/SurgeXT.dll
           test -f dist/SurgeXT.dll || (echo "SurgeXT.dll not found" && find /tmp/surge -type f | head -30 && exit 1)
-
       - name: Install dev dependencies
         run: npm install
-
       - name: Run VST integration test (headless Chrome)
         run: |
           npx playwright install chromium
