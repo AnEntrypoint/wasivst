@@ -57,7 +57,7 @@ jobs:
       - name: Build rootfs via Docker
         run: |
           docker build -f src/guest/Dockerfile -t wasivst-guest src/guest/
-          docker create --name tmp wasivst-guest
+          docker create --name tmp wasivst-guest /null
           docker cp tmp:/rootfs.ext4 rootfs.ext4
           docker rm tmp
 
