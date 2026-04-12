@@ -3,6 +3,10 @@
 ## [Unreleased] - 2026-04-12
 
 ### Added
+- GitHub Pages live demo deployed on every push to main (not just tags)
+  - `src/demo/index.html`: minimal UI — paste a VST3 .dll URL, click Load, see boot progress and logs
+  - `src/demo/coi-serviceworker.js`: service worker that injects COOP/COEP headers on GH Pages (required for SharedArrayBuffer)
+  - Demo auto-reloads once service worker is registered to enable cross-origin isolation
 - Split rootfs.ext4 into 50MB parts in CI for GitHub Pages compatibility
   - `split -b 50m` produces `rootfs.ext4.part-*` files + `rootfs.parts.json` manifest
   - wasivst-worklet.js fetches parts manifest then reassembles via `_fetchParts()`

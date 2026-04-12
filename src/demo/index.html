@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>wasivst demo</title>
+<script>
+if (!crossOriginIsolated) {
+  navigator.serviceWorker.register('/coi-serviceworker.js').then(() => location.reload());
+}
+</script>
+<style>
+body { font-family: monospace; max-width: 640px; margin: 40px auto; padding: 0 16px; background: #111; color: #eee; }
+h1 { font-size: 1.2em; margin-bottom: 4px; }
+p { color: #aaa; font-size: 0.85em; margin: 4px 0 16px; }
+input { width: 100%; box-sizing: border-box; padding: 8px; background: #222; border: 1px solid #444; color: #eee; font-family: monospace; }
+button { margin-top: 8px; padding: 8px 16px; background: #2a6; border: none; color: #fff; cursor: pointer; font-family: monospace; }
+button:disabled { background: #444; cursor: default; }
+#status { margin-top: 16px; padding: 8px; background: #1a1a1a; border: 1px solid #333; min-height: 40px; font-size: 0.85em; white-space: pre-wrap; }
+#logs { margin-top: 8px; padding: 8px; background: #1a1a1a; border: 1px solid #333; height: 160px; overflow-y: auto; font-size: 0.75em; color: #8f8; }
+</style>
+</head>
+<body>
+<h1>wasivst</h1>
+<p>Run a Windows VST3 plugin (.dll) in the browser. Paste a public URL to a 64-bit VST3 .dll file.</p>
+<p>Boot takes 10-30s: WASM emulator → Alpine Linux → Wine → plugin.</p>
+<input id="url" type="text" placeholder="https://example.com/MyPlugin.dll" />
+<br>
+<button id="btn" onclick="load()">Load plugin</button>
+<div id="status">waiting...</div>
+<div id="logs"></div>
+<script type="module">
+if (!crossOriginIsolated) {
+  document.getElementById('status').textContent = 'Waiting for service worker reload to enable SharedArrayBuffer...';
+}
+
+window.load = async () => {
+  const url = document.getElementById('url').value.trim();
+  if (!url) return;
+  const btn = document.getElementById('btn');
+  const status = document.getElementById('status');
+  const logsEl = document.getElementById('logs');
+  btn.disabled = true;
+  status.textContent = 'Loading wasivst module...';
+
+  try {
+    const { WasiVST } = await import('./wasivst.js');
+    status.textContent = 'Creating AudioContext...';
+    const ac = new AudioContext({ sampleRate: 44100 });
+
+    status.textContent = 'Booting emulator + loading plugin (10-30s)...';
+    const vst = await WasiVST.load(ac, url);
+    vst.connect(ac.destination);
+
+    status.textContent = `Plugin loaded. State: ${window.__wasivst?.instances[url]?.state ?? 'ready'}`;
+
+    setInterval(() => {
+      const entries = window.__wasivst?.logs ?? [];
+      logsEl.textContent = entries.slice(-50).map(e => `[${e.subsystem}] ${e.msg}`).join('\n');
+      logsEl.scrollTop = logsEl.scrollHeight;
+    }, 500);
+  } catch (e) {
+    status.textContent = `Error: ${e.message}`;
+    btn.disabled = false;
+  }
+};
+</script>
+</body>
+</html>
