@@ -4,11 +4,12 @@
 
 ### Added
 - GitHub Pages live demo deployed on every push to main (not just tags)
-  - `src/demo/index.html`: plugin URL input defaulting to bundled MDA Piano, load button, status + log display
+  - `src/demo/index.html`: plugin URL input defaulting to bundled MDA Piano (`mda-Piano.dll`, VST2), load button, status + log display
   - `src/demo/coi-serviceworker.js`: service worker injects COOP/COEP headers on GH Pages (required for SharedArrayBuffer)
     - Fixed SW registration to use relative path (works under /wasivst/ subpath)
     - Fixed reload: listens for `activated` state on installing SW, reloads if already active on re-visit
-  - CI bundles MDA Piano VST3 (1.2MB, MIT, plain zip) as default demo plugin: `mda-Piano.vst3.dll`
+  - CI bundles MDA Piano VST2 (plain zip) as default demo plugin: `mda-Piano.dll`
+  - Fixed: zip contains flat VST2 DLLs named `mda Piano.dll` (space, not hyphen; VST2, not VST3 bundle)
 - Split rootfs.ext4 into 50MB parts in CI for GitHub Pages compatibility
   - `split -b 50m` produces `rootfs.ext4.part-*` files + `rootfs.parts.json` manifest
   - wasivst-worklet.js fetches parts manifest then reassembles via `_fetchParts()`

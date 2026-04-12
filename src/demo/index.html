@@ -30,13 +30,13 @@ button:disabled { background: #444; cursor: default; }
 <h1>wasivst</h1>
 <p>Run a Windows VST3 plugin (.dll) in the browser via WASM x86-64 emulation.</p>
 <p>Boot takes 10-30s: WASM emulator → Alpine Linux → Wine → plugin.</p>
-<input id="url" type="text" value="mda-Piano.vst3.dll" />
+<input id="url" type="text" value="mda-Piano.dll" />
 <br>
 <button id="btn" onclick="load()">Load plugin</button>
 <div id="status">Ready.</div>
 <div id="logs"></div>
 <script type="module">
-const DEFAULT_PLUGIN = 'mda-Piano.vst3.dll';
+const DEFAULT_PLUGIN = 'mda-Piano.dll';
 
 document.getElementById('url').value = DEFAULT_PLUGIN;
 
