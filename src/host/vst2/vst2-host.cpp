@@ -1,9 +1,22 @@
 #include "vst2-host.h"
 
-#include <dlfcn.h>
 #include <stdexcept>
 #include <cstdio>
 #include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#define lib_open(p)    LoadLibraryA(p)
+#define lib_sym(h, s)  GetProcAddress((HMODULE)(h), (s))
+#define lib_close(h)   FreeLibrary((HMODULE)(h))
+#define lib_error()    "LoadLibrary failed"
+#else
+#include <dlfcn.h>
+#define lib_open(p)    dlopen((p), RTLD_NOW | RTLD_LOCAL)
+#define lib_sym(h, s)  dlsym((h), (s))
+#define lib_close(h)   dlclose(h)
+#define lib_error()    dlerror()
+#endif
 
 #include "../../include/vestige/aeffectx.h"
 #include "../../common/vst24.h"
@@ -23,14 +36,14 @@ static intptr_t VST_CALL_CONV audio_master_callback(
 Vst2Host::Vst2Host(const std::string& dll_path, SerialChannel& ch)
     : ch_(ch)
 {
-    lib_handle_ = dlopen(dll_path.c_str(), RTLD_NOW | RTLD_LOCAL);
+    lib_handle_ = lib_open(dll_path.c_str());
     if (!lib_handle_)
-        throw std::runtime_error(std::string("dlopen failed: ") + dlerror());
+        throw std::runtime_error(std::string("lib_open failed: ") + lib_error());
 
     using VSTPluginMain_t = AEffect*(*)(audioMasterCallback);
-    auto entry = reinterpret_cast<VSTPluginMain_t>(dlsym(lib_handle_, "VSTPluginMain"));
+    auto entry = reinterpret_cast<VSTPluginMain_t>(lib_sym(lib_handle_, "VSTPluginMain"));
     if (!entry)
-        entry = reinterpret_cast<VSTPluginMain_t>(dlsym(lib_handle_, "main"));
+        entry = reinterpret_cast<VSTPluginMain_t>(lib_sym(lib_handle_, "main"));
     if (!entry)
         throw std::runtime_error("VST2 entry point not found");
 
@@ -53,7 +66,7 @@ Vst2Host::~Vst2Host() {
         eff->dispatcher(eff, effMainsChanged, 0, 0, nullptr, 0.0f);
         eff->dispatcher(eff, effClose, 0, 0, nullptr, 0.0f);
     }
-    if (lib_handle_) dlclose(lib_handle_);
+    if (lib_handle_) lib_close(lib_handle_);
 }
 
 void Vst2Host::run() {

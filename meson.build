@@ -37,4 +37,6 @@ executable(
   install : true,
 )
 
-subdir('tools/wasivstctl')
+if host_machine.system() != 'windows'
+  subdir('tools/wasivstctl')
+endif

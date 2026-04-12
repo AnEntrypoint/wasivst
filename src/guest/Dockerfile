@@ -1,17 +1,14 @@
 FROM alpine:3.19 AS builder
 
 RUN apk add --no-cache \
-    wine wine-libs \
+    wine \
     e2fsprogs \
-    busybox-static \
-    meson ninja gcc g++ musl-dev \
-    python3 py3-pip
+    busybox-static
 
 COPY init /sbin/init
 RUN chmod +x /sbin/init
 
-COPY wasivst-host-placeholder /usr/bin/wasivst-host
-RUN chmod +x /usr/bin/wasivst-host
+COPY wasivst-host-placeholder.exe /usr/bin/wasivst-host.exe
 
 RUN mkdir -p /rootfs && \
     cp -a /bin /sbin /lib /usr /etc /rootfs/ && \

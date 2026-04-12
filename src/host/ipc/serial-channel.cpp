@@ -5,8 +5,17 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
 
-SerialChannel::SerialChannel() {}
+SerialChannel::SerialChannel() {
+#ifdef _WIN32
+    _setmode(_fileno(stdin),  _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+}
 
 void SerialChannel::read_bytes(void* data, size_t len) {
     if (fread(data, 1, len, stdin) != len)

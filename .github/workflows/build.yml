@@ -25,18 +25,18 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build g++ wine64 wine64-tools
+          sudo apt-get install -y meson ninja-build mingw-w64
 
-      - name: Build wasivst-host
+      - name: Build wasivst-host (Windows PE via mingw-w64)
         run: |
-          meson setup build --buildtype=release -Dvst3=false
-          ninja -C build wasivst-host
+          meson setup build --buildtype=release -Dvst3=false --cross-file cross-mingw.ini
+          ninja -C build wasivst-host.exe
 
       - name: Upload wasivst-host artifact
         uses: actions/upload-artifact@v4
         with:
           name: wasivst-host
-          path: build/wasivst-host
+          path: build/wasivst-host.exe
 
   build-guest-rootfs:
     name: Build Linux guest rootfs
@@ -52,7 +52,7 @@ jobs:
           path: src/guest/
 
       - name: Rename artifact for Dockerfile COPY
-        run: mv src/guest/wasivst-host src/guest/wasivst-host-placeholder
+        run: mv src/guest/wasivst-host.exe src/guest/wasivst-host-placeholder.exe
 
       - name: Build rootfs via Docker
         run: |

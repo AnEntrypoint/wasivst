@@ -1,8 +1,5 @@
 #!/bin/sh
-# Minimal init: mount pseudo filesystems, start wasivst-host under Wine.
 mount -t proc  proc  /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
-
-# virtio-serial port 0 is exposed as /dev/vport0p0 in the guest
-exec wine /usr/bin/wasivst-host < /dev/vport0p0 > /dev/vport0p0
+exec wine /usr/bin/wasivst-host.exe < /dev/vport0p0 > /dev/vport0p0
