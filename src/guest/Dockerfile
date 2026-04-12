@@ -1,16 +1,17 @@
-# Build a minimal Alpine Linux rootfs with Wine 64-bit and wasivst-host.
-# Output: /rootfs.ext4 (mounted by QEMU WASM guest)
-
 FROM alpine:3.19 AS builder
 
 RUN apk add --no-cache \
     wine wine-libs \
     e2fsprogs \
-    busybox-static
+    busybox-static \
+    meson ninja gcc g++ musl-dev \
+    python3 py3-pip
 
-COPY wasivst-host /usr/bin/wasivst-host
 COPY init /sbin/init
-RUN chmod +x /sbin/init /usr/bin/wasivst-host
+RUN chmod +x /sbin/init
+
+COPY wasivst-host-placeholder /usr/bin/wasivst-host
+RUN chmod +x /usr/bin/wasivst-host
 
 RUN mkdir -p /rootfs && \
     cp -a /bin /sbin /lib /usr /etc /rootfs/ && \

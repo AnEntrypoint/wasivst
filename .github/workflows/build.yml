@@ -41,8 +41,18 @@ jobs:
   build-guest-rootfs:
     name: Build Linux guest rootfs
     runs-on: ubuntu-22.04
+    needs: [build-host]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download wasivst-host artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wasivst-host
+          path: src/guest/
+
+      - name: Rename artifact for Dockerfile COPY
+        run: mv src/guest/wasivst-host src/guest/wasivst-host-placeholder
 
       - name: Build rootfs via Docker
         run: |
