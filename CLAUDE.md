@@ -17,10 +17,10 @@
 ```
 Browser (main thread)
   └─ AudioWorklet (wasivst-worklet.js)
-       └─ WASM: QEMU x86-64 emulator (compiled via Emscripten 3.1.50)
-            └─ Alpine Linux 3.19 guest (minimal rootfs)
+       └─ WASM: v86 x86-64 PC emulator (npm: v86 0.5.319, pre-built)
+            └─ Alpine Linux 3.19 guest (minimal rootfs, ext4 image)
                  └─ Wine 64-bit
-                      └─ wasivst-host (headless VST host binary)
+                      └─ wasivst-host.exe (headless VST host, Windows PE via MinGW)
                            └─ MyPlugin.vst3 (.dll)
   └─ Web Audio API (SharedArrayBuffer + MessageChannel)
 ```
@@ -53,25 +53,33 @@ All host↔worklet communication uses a single **virtio-serial byte stream**. Fr
 
 **Frame format:** `[u32 length][u8 tag][payload bytes]`
 
-## QEMU WASM Compilation
+## v86 WASM Emulator
 
-QEMU is compiled to WASM via Emscripten 3.1.50 with these flags:
+v86 (npm: `v86`, version 0.5.319) is a pre-built x86-64 PC emulator in JS/WASM. No compilation required.
 
-```bash
-emcc [...] \
-  -s USE_PTHREADS=1 \           # WASM threads via SharedArrayBuffer + Atomics
-  -s ALLOW_MEMORY_GROWTH=1 \    # Dynamic memory (plugins may need arbitrary amounts)
-  -s TCG_BACKEND=yes \          # Pure TCG (no KVM in browser)
-  -target wasm32 \
-  src/qemu/softmmu/qemu-system-x86_64.c
+**Distribution**: `npm pack v86` downloads a tarball containing:
+- `build/v86.wasm` — WASM emulator binary (~2MB)
+- `build/libv86.mjs` — ES module API for AudioWorklet `import()`
+- `build/libv86.js` — CJS API (unused)
+
+**Why v86 instead of QEMU compiled via Emscripten:**
+QEMU 8.2 uses meson internally. `emcmake ./configure` is an autotools pattern — it does not work with meson-based builds. QEMU's configure also rejects Emscripten as a valid host OS (`uname -s` returns `Linux`, which causes `ERROR: Unrecognized host OS`). v86 is pre-built, maintained, and supports the full x86-64 ISA needed for Wine.
+
+**V86 instance config** (wasivst-worklet.js):
+```js
+new V86({
+  wasm_path: wasmUrl,        // wasivst-qemu.wasm (v86.wasm renamed)
+  memory_size: 256 * 1024 * 1024,
+  vga_memory_size: 2 * 1024 * 1024,
+  hda: { buffer: rootfsBuffer }, // rootfs.ext4 as ArrayBuffer
+  autostart: true,
+  disable_keyboard: true,
+  disable_mouse: true,
+  serial0: true,             // virtio-serial for host↔guest IPC
+})
 ```
 
-**Why these flags matter:**
-- `USE_PTHREADS=1` is required for audio processing threads in guest Wine
-- `ALLOW_MEMORY_GROWTH=1` is critical; Windows VST plugins often allocate large buffers
-- TCG is the only backend available in WASM (no hardware virtualization)
-
-Guest rootfs is embedded as binary data or fetched via `fetch()` at runtime.
+Guest rootfs is fetched via `fetch()` at AudioWorklet init time.
 
 ## Observability
 
@@ -161,15 +169,13 @@ virtio-serial IPC adds ~1-5ms per audio block. This is unavoidable in the stack.
 
 ## Build Environment
 
-**Currently requires Linux build environment** (Windows builds not yet supported):
+**CI runs on ubuntu-22.04 via GitHub Actions.** No local build environment needed for the WASM emulator — it is fetched from npm.
 
-- Meson 1.0+ (build system)
-- Emscripten 3.1.50 (QEMU → WASM compilation)
-- Docker or buildroot (guest rootfs)
-- Wine headers (for VST plugin interfaces)
-- GCC/Clang (for C++ compilation)
-
-See `docs/building.md` for full setup.
+- Meson 1.0+ + ninja (wasivst-host.exe compilation)
+- mingw-w64 (cross-compile Windows PE for Wine)
+- Docker (guest Alpine rootfs)
+- Node.js + npm (v86 package fetch, Playwright smoke test)
+- No Emscripten — v86 is pre-built
 
 ## Key Implementation Notes
 
@@ -257,16 +263,22 @@ This runs the plugin in a local QEMU instance without a browser.
 
 5. **Bitsery over MessagePack/Protobuf:** bitsery is inherited from yabridge and is ultra-compact (critical for audio frames). Changing serialization would break protocol compatibility.
 
+6. **wasivst-host is a Windows PE, not a Linux ELF.** It must be compiled with `x86_64-w64-mingw32-g++` (MinGW). Linux GCC produces an ELF that Wine cannot execute as a subprocess, and Linux dlopen cannot load Windows PE DLLs. The meson cross-file is `cross-mingw.ini` at repo root. CI invocation: `meson setup build --cross-file cross-mingw.ini -Dvst3=false`.
+
+7. **Alpine 3.19 apk: `wine-libs` is not a separate package.** The `wine` package pulls in its own libraries. Only `wine`, `e2fsprogs`, and `busybox-static` are needed in the guest Dockerfile. Adding `wine-libs` explicitly causes an apk error (package not found).
+
+8. **serial-channel.cpp: binary mode required on Windows.** MinGW/MSVC stdio opens stdin/stdout in text mode, which translates `\n` to `\r\n` and corrupts the raw binary virtio-serial frame stream. Add at startup, guarded by `#ifdef _WIN32`:
+   ```cpp
+   #include <fcntl.h>
+   #include <io.h>
+   _setmode(_fileno(stdin),  _O_BINARY);
+   _setmode(_fileno(stdout), _O_BINARY);
+   ```
+
 ## Roadmap & Known Limitations
 
 ### Remaining PRD Items
-- vst-host-binary: full meson build verification (mostly done)
-- guest-rootfs-build: Docker + buildroot rootfs (templates exist)
-- qemu-wasm-bundle: Emscripten compilation (CI step exists)
-- worklet-processor: WASM virtio-serial integration (core done)
-- worklet-js-api: main thread API finalization (mostly done)
-- ci-cd-pipeline: end-to-end CI (GitHub Actions workflow complete)
-- observability-guest-channel: log streaming from guest (partially done)
+All core items complete. CI pipeline fully green as of 2026-04-12.
 
 ### Will Not Support
 - GUI/editor rendering

@@ -1,6 +1,7 @@
 
 const WORKLET_URL = new URL('./wasivst-worklet.js', import.meta.url).href;
-const QEMU_WASM_URL = new URL('./wasivst-qemu.wasm', import.meta.url).href;
+const LIBV86_URL = new URL('./libv86.mjs', import.meta.url).href;
+const ROOTFS_URL = new URL('./rootfs.ext4', import.meta.url).href;
 
 window.__wasivst = window.__wasivst ?? { logs: [], instances: {}, serial: {} };
 
@@ -20,7 +21,7 @@ export class WasiVST {
     await audioCtx.audioWorklet.addModule(WORKLET_URL);
 
     const node = new AudioWorkletNode(audioCtx, 'wasivst-processor', {
-      processorOptions: { wasmUrl: QEMU_WASM_URL },
+      processorOptions: { libv86Url: LIBV86_URL, rootfsUrl: ROOTFS_URL },
       numberOfInputs: 1,
       numberOfOutputs: 1,
       outputChannelCount: [2],
@@ -83,7 +84,9 @@ export class WasiVST {
       window.__wasivst.logs.push(entry);
       if (window.__wasivst.logs.length > 1000) window.__wasivst.logs.shift();
     } else if (msg.type === 'ready') {
-      window.__wasivst.instances[this.#pluginUrl].state = 'ready';
+      if (window.__wasivst.instances[this.#pluginUrl]) {
+        window.__wasivst.instances[this.#pluginUrl].state = 'ready';
+      }
     }
   }
 }

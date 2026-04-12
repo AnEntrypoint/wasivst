@@ -86,7 +86,7 @@ jobs:
           tar -xzf /tmp/v86-pack/*.tgz -C /tmp/v86-extract --strip-components=1
           mkdir -p dist
           cp /tmp/v86-extract/build/v86.wasm dist/wasivst-qemu.wasm
-          cp /tmp/v86-extract/build/libv86.js dist/libv86.js
+          cp /tmp/v86-extract/build/libv86.mjs dist/libv86.mjs
           cp rootfs.ext4 dist/rootfs.ext4
 
       - name: Upload QEMU WASM artifact

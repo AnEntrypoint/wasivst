@@ -14,31 +14,43 @@ class WasivstProcessor extends AudioWorkletProcessor {
     super(options);
 
     this._ready = false;
-    this._pendingAudio = [];
-    this._wasmModule = null;
+    this._rxBuf = [];
+    this._v86 = null;
 
-    const wasmUrl = options.processorOptions?.wasmUrl;
-    if (!wasmUrl) throw new Error('wasivst-processor: wasmUrl required in processorOptions');
+    const { libv86Url, rootfsUrl } = options.processorOptions ?? {};
+    if (!libv86Url || !rootfsUrl) throw new Error('wasivst: libv86Url and rootfsUrl required');
 
-    this._init(wasmUrl);
+    this._init(libv86Url, rootfsUrl);
     this.port.onmessage = (e) => this._onMessage(e.data);
   }
 
-  async _init(wasmUrl) {
-    const resp = await fetch(wasmUrl);
-    const buf = await resp.arrayBuffer();
-    const { instance } = await WebAssembly.instantiate(buf, this._buildImports());
-    this._wasmModule = instance;
-    this._ready = true;
-    this.port.postMessage({ type: 'ready' });
-  }
+  async _init(libv86Url, rootfsUrl) {
+    const { V86 } = await import(libv86Url);
 
-  _buildImports() {
-    return {
-      env: {
-        memory: new WebAssembly.Memory({ initial: 256, maximum: 65536, shared: true }),
-      },
-    };
+    const rootfsResp = await fetch(rootfsUrl);
+    const rootfsBuffer = await rootfsResp.arrayBuffer();
+
+    const wasmUrl = libv86Url.replace('libv86.mjs', 'wasivst-qemu.wasm');
+
+    this._v86 = new V86({
+      wasm_path: wasmUrl,
+      memory_size: 256 * 1024 * 1024,
+      vga_memory_size: 2 * 1024 * 1024,
+      hda: { buffer: rootfsBuffer },
+      autostart: true,
+      disable_keyboard: true,
+      disable_mouse: true,
+      serial0: true,
+    });
+
+    this._v86.add_listener('serial0-output-byte', (byte) => {
+      this._rxBuf.push(byte);
+    });
+
+    this._v86.add_listener('emulator-ready', () => {
+      this._ready = true;
+      this.port.postMessage({ type: 'ready' });
+    });
   }
 
   _onMessage(msg) {
@@ -58,10 +70,59 @@ class WasivstProcessor extends AudioWorkletProcessor {
     const output = outputs[0];
 
     this._serialWrite(this._encodeProcess(input));
-    const result = this._serialRead();
-    if (result) this._decodeProcessResp(result, output);
+
+    const resp = this._drainResponse();
+    if (resp) this._dispatch(resp, output);
 
     return true;
+  }
+
+  _drainResponse() {
+    if (this._rxBuf.length < 1) return null;
+    const tag = this._rxBuf[0];
+    if (tag === FRAME_TAG.PROCESS_RESP) {
+      if (this._rxBuf.length < 9) return null;
+      const dv = new DataView(new Uint8Array(this._rxBuf.slice(0, 9)).buffer);
+      const sampleCount = dv.getUint32(1, true);
+      const chCount = dv.getUint32(5, true);
+      const total = 9 + sampleCount * chCount * 4;
+      if (this._rxBuf.length < total) return null;
+      const frame = new Uint8Array(this._rxBuf.splice(0, total));
+      return frame;
+    } else if (tag === FRAME_TAG.GET_PARAM_RESP) {
+      if (this._rxBuf.length < 13) return null;
+      const frame = new Uint8Array(this._rxBuf.splice(0, 13));
+      return frame;
+    } else if (tag === FRAME_TAG.LOG) {
+      if (this._rxBuf.length < 10) return null;
+      const dv = new DataView(new Uint8Array(this._rxBuf).buffer);
+      const subLen = dv.getUint32(2, true);
+      const msgLen = dv.getUint32(6 + subLen, true);
+      const total = 10 + subLen + msgLen;
+      if (this._rxBuf.length < total) return null;
+      const frame = new Uint8Array(this._rxBuf.splice(0, total));
+      return frame;
+    }
+    this._rxBuf.shift();
+    return null;
+  }
+
+  _dispatch(frame, output) {
+    const tag = frame[0];
+    if (tag === FRAME_TAG.PROCESS_RESP) {
+      this._decodeProcessResp(frame, output);
+    } else if (tag === FRAME_TAG.GET_PARAM_RESP) {
+      const dv = new DataView(frame.buffer);
+      this.port.postMessage({ type: 'getParamResp', id: dv.getUint32(1, true), value: dv.getFloat64(5, true) });
+    } else if (tag === FRAME_TAG.LOG) {
+      const dv = new DataView(frame.buffer);
+      const level = frame[1];
+      const subLen = dv.getUint32(2, true);
+      const subsystem = new TextDecoder().decode(frame.slice(6, 6 + subLen));
+      const msgLen = dv.getUint32(6 + subLen, true);
+      const message = new TextDecoder().decode(frame.slice(10 + subLen, 10 + subLen + msgLen));
+      this.port.postMessage({ type: 'log', level, subsystem, message });
+    }
   }
 
   _encodeLoad(path) {
@@ -95,8 +156,8 @@ class WasivstProcessor extends AudioWorkletProcessor {
     return buf;
   }
 
-  _decodeProcessResp(bytes, output) {
-    const dv = new DataView(bytes.buffer);
+  _decodeProcessResp(frame, output) {
+    const dv = new DataView(frame.buffer);
     const sampleCount = dv.getUint32(1, true);
     const chCount = dv.getUint32(5, true);
     let offset = 9;
@@ -124,11 +185,8 @@ class WasivstProcessor extends AudioWorkletProcessor {
     return buf;
   }
 
-  _serialWrite(_bytes) {
-  }
-
-  _serialRead() {
-    return null;
+  _serialWrite(bytes) {
+    if (this._v86) this._v86.serial0_send(bytes);
   }
 }
 

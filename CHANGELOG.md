@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased] - 2026-04-12
+
+### Changed
+- Replaced Emscripten/QEMU WASM compilation with pre-built v86 npm package (v0.5.319)
+  - v86 is an x86-64 PC emulator distributed as pre-built WASM via npm — no Emscripten toolchain required
+  - CI now runs `npm pack v86` to fetch libv86.mjs and v86.wasm; QEMU build step removed
+- wasivst-worklet.js: complete rewrite to use v86 V86 class via dynamic `import(libv86Url)`
+  - AudioWorkletProcessor creates V86 instance with rootfs.ext4 as ArrayBuffer (fetched via fetch())
+  - virtio-serial IPC: serial0_send() for host→guest writes, serial0-output-byte listener for guest→host reads
+  - _drainResponse() parses accumulated serial bytes into PROCESS_RESP / GET_PARAM_RESP / LOG frames
+- wasivst.js: updated URL references from libv86.js → libv86.mjs and rootfs from qemu-rootfs → rootfs.ext4
+- CLAUDE.md: updated architecture docs to reflect v86 (removed Emscripten sections, added v86 config reference)
+
+### Fixed
+- docker create: pass dummy /null command for FROM scratch images (no default CMD available)
+- mkfs.ext4: increased rootfs size from 256M → 768M to fit Wine 406MB install
+- busybox-static /sbin/init ETXTBSY: rm -f /sbin/init before overwriting (unlink inode first)
+- npm pack --pack-destination: create /tmp/v86-pack dir before npm pack (ENOENT otherwise)
+- smoke-test.mjs: serve / as /index.html, strip .. from paths (path traversal prevention)
+
 ## [0.1.0] - 2026-04-12
 
 ### Added
