@@ -7,7 +7,10 @@
   - `split -b 50m` produces `rootfs.ext4.part-*` files + `rootfs.parts.json` manifest
   - wasivst-worklet.js fetches parts manifest then reassembles via `_fetchParts()`
   - Falls back to monolithic `rootfs.ext4` if no parts manifest found
-- VST integration test CI job: downloads Dexed v0.9.8 (free 64-bit VST3), boots it in Playwright/Chrome
+- VST integration test CI job: downloads Surge XT nightly (free 64-bit VST3, pluginsonly zip), boots it in Playwright/Chrome
+  - Switched from Dexed: Dexed's Inno Setup 6.1.0 installer is incompatible with ubuntu-22.04's innoextract 1.8
+  - Surge XT pluginsonly.zip is a plain zip with VST3 bundle at `Surge XT.vst3/Contents/x86_64-win/Surge XT.dll`
+  - Asset URL resolved dynamically from GitHub Releases API (Nightly tag) — no hardcoded filename
   - `vst-integration-test.mjs`: calls `WasiVST.load()` with 120s timeout, verifies boot state
   - Runs in parallel with `bundle-and-publish` (both depend on `build-qemu-wasm`)
 

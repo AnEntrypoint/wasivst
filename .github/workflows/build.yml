@@ -152,7 +152,7 @@ jobs:
         uses: actions/deploy-pages@v4
 
   vst-integration-test:
-    name: VST integration test (Dexed)
+    name: VST integration test (Surge XT)
     runs-on: ubuntu-22.04
     needs: [build-qemu-wasm]
     steps:
@@ -170,16 +170,15 @@ jobs:
           cp src/worklet/wasivst-worklet.js dist/wasivst-worklet.js
           printf '<!doctype html><html><body></body></html>' > dist/index.html
 
-      - name: Download Dexed VST3 (Windows 64-bit)
+      - name: Download Surge XT VST3 (Windows 64-bit, pluginsonly zip)
         run: |
-          sudo apt-get install -y innoextract
-          curl -L -o /tmp/dexed-win.zip \
-            https://github.com/asb2m10/dexed/releases/download/v0.9.8/dexed-0.9.8-win.zip
-          unzip -p /tmp/dexed-win.zip 'dexed-0.9.8-win.exe' > /tmp/dexed-win.exe
-          mkdir -p /tmp/dexed
-          innoextract -d /tmp/dexed /tmp/dexed-win.exe
-          find /tmp/dexed -name 'Dexed.dll' -print -quit | xargs -I{} cp {} dist/Dexed.dll
-          test -f dist/Dexed.dll || (echo "Dexed.dll not found after extraction" && find /tmp/dexed -type f | head -30 && exit 1)
+          ASSET_URL=$(curl -s https://api.github.com/repos/surge-synthesizer/surge/releases/tags/Nightly \
+            | python3 -c "import sys,json; assets=json.load(sys.stdin)['assets']; print(next(a['browser_download_url'] for a in assets if 'win64' in a['name'] and 'pluginsonly' in a['name'] and 'arm' not in a['name'] and 'juce7' not in a['name']))")
+          curl -L -o /tmp/surge-pluginsonly.zip "$ASSET_URL"
+          mkdir -p /tmp/surge
+          unzip -o /tmp/surge-pluginsonly.zip -d /tmp/surge
+          find /tmp/surge -name 'Surge XT.dll' -path '*/x86_64-win/*' | head -1 | xargs -I{} cp {} dist/SurgeXT.dll
+          test -f dist/SurgeXT.dll || (echo "SurgeXT.dll not found" && find /tmp/surge -type f | head -30 && exit 1)
 
       - name: Install dev dependencies
         run: npm install

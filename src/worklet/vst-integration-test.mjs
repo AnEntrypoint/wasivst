@@ -6,9 +6,9 @@ import { fileURLToPath } from 'url';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const dist = join(__dir, '../../dist');
-const plugin = join(dist, 'Dexed.dll');
+const plugin = join(dist, 'SurgeXT.dll');
 
-if (!existsSync(plugin)) throw new Error(`Dexed.dll not found at ${plugin}`);
+if (!existsSync(plugin)) throw new Error(`SurgeXT.dll not found at ${plugin}`);
 
 const mimeOf = p =>
   p.endsWith('.js') ? 'application/javascript' :
