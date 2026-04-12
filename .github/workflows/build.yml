@@ -126,13 +126,13 @@ jobs:
           cp src/demo/coi-serviceworker.js dist/coi-serviceworker.js
           cp src/demo/index.html dist/index.html
 
-      - name: Bundle MDA Piano VST2 for demo
+      - name: Bundle MDA TestTone VST2 for demo
         run: |
           curl -L -o /tmp/mda-win.zip https://github.com/studiorack/mda/releases/download/v1.0.4/mda-win.zip
           mkdir -p /tmp/mda
           unzip -o /tmp/mda-win.zip -d /tmp/mda
-          find /tmp/mda -name 'mda Piano.dll' | head -1 | xargs -I{} cp {} dist/mda-Piano.dll
-          test -f dist/mda-Piano.dll || (echo "mda Piano.dll not found" && find /tmp/mda -type f | head -20 && exit 1)
+          find /tmp/mda -name 'mda TestTone.dll' | head -1 | xargs -I{} cp {} dist/mda-TestTone.dll
+          test -f dist/mda-TestTone.dll || (echo "mda TestTone.dll not found" && find /tmp/mda -type f | head -20 && exit 1)
 
       - name: Install dev dependencies
         run: npm install
