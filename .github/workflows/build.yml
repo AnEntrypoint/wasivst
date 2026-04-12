@@ -81,7 +81,7 @@ jobs:
 
       - name: Fetch v86 WASM emulator and bundle rootfs
         run: |
-          mkdir -p /tmp/v86-extract
+          mkdir -p /tmp/v86-extract /tmp/v86-pack
           npm pack v86 --pack-destination /tmp/v86-pack
           tar -xzf /tmp/v86-pack/*.tgz -C /tmp/v86-extract --strip-components=1
           mkdir -p dist
