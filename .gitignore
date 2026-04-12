@@ -1,0 +1,7 @@
+build/
+dist/
+*.wasm
+*.ext4
+*.o
+node_modules/
+.prd

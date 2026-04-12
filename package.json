@@ -1,0 +1,22 @@
+{
+  "name": "@anentrypoint/wasivst",
+  "version": "0.1.0",
+  "description": "Run Windows VST2/VST3 plugins in the browser via WASM",
+  "type": "module",
+  "exports": {
+    ".": "./src/worklet/wasivst.js",
+    "./worklet": "./src/worklet/wasivst-worklet.js"
+  },
+  "files": [
+    "src/worklet/",
+    "dist/"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AnEntrypoint/wasivst"
+  },
+  "license": "GPL-3.0",
+  "devDependencies": {
+    "@playwright/test": "^1.42.0"
+  }
+}

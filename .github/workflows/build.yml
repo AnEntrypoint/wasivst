@@ -1,0 +1,150 @@
+name: wasivst build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['*.*.*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build-host:
+    name: Build wasivst-host
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build g++ wine64 wine64-tools
+
+      - name: Build wasivst-host
+        run: |
+          meson setup build --buildtype=release
+          ninja -C build wasivst-host
+
+      - name: Upload wasivst-host artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasivst-host
+          path: build/wasivst-host
+
+  build-guest-rootfs:
+    name: Build Linux guest rootfs
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build rootfs via Docker
+        run: |
+          docker build -f src/guest/Dockerfile -t wasivst-guest src/guest/
+          docker create --name tmp wasivst-guest
+          docker cp tmp:/rootfs.ext4 rootfs.ext4
+          docker rm tmp
+
+      - name: Upload rootfs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rootfs
+          path: rootfs.ext4
+
+  build-qemu-wasm:
+    name: Build QEMU WASM bundle
+    runs-on: ubuntu-22.04
+    needs: [build-guest-rootfs]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download rootfs
+        uses: actions/download-artifact@v4
+        with:
+          name: rootfs
+
+      - name: Cache Emscripten
+        uses: actions/cache@v4
+        with:
+          path: ~/.emscripten_cache
+          key: emscripten-3.1.50-qemu-${{ hashFiles('src/guest/qemu-build.sh') }}
+
+      - name: Install Emscripten
+        run: |
+          git clone --depth=1 https://github.com/emscripten-core/emsdk.git /opt/emsdk
+          /opt/emsdk/emsdk install 3.1.50
+          /opt/emsdk/emsdk activate 3.1.50
+
+      - name: Build QEMU WASM
+        run: |
+          source /opt/emsdk/emsdk_env.sh
+          bash src/guest/qemu-build.sh rootfs.ext4 dist/wasivst-qemu.wasm
+
+      - name: Upload QEMU WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-wasm
+          path: dist/wasivst-qemu.wasm
+
+  bundle-and-publish:
+    name: Bundle JS + WASM and publish
+    runs-on: ubuntu-22.04
+    needs: [build-qemu-wasm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download QEMU WASM
+        uses: actions/download-artifact@v4
+        with:
+          name: qemu-wasm
+          path: dist/
+
+      - name: Copy worklet JS
+        run: |
+          cp src/worklet/wasivst.js dist/wasivst.js
+          cp src/worklet/wasivst-worklet.js dist/wasivst-worklet.js
+
+      - name: Smoke test (headless Chrome)
+        run: |
+          npx playwright install chromium
+          node src/worklet/smoke-test.mjs
+
+      - name: Publish to npm
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          echo '//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}' > ~/.npmrc
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Deploy GitHub Pages demo
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+
+      - name: Deploy Pages
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/deploy-pages@v4
+
+  smoke-test:
+    name: Smoke test in browser
+    runs-on: ubuntu-22.04
+    needs: [bundle-and-publish]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: qemu-wasm
+          path: dist/
+      - run: |
+          cp src/worklet/wasivst.js dist/
+          cp src/worklet/wasivst-worklet.js dist/
+          node src/worklet/smoke-test.mjs

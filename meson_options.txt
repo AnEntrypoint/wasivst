@@ -1,0 +1,6 @@
+option(
+  'vst3',
+  type : 'boolean',
+  value : true,
+  description : 'Build with VST3 plugin support in wasivst-host.'
+)
