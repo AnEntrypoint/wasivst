@@ -9,9 +9,9 @@
   - Falls back to monolithic `rootfs.ext4` if no parts manifest found
 - VST integration test CI job: downloads Surge XT nightly (free 64-bit VST3, pluginsonly zip), boots it in Playwright/Chrome
   - Switched from Dexed: Dexed's Inno Setup 6.1.0 installer is incompatible with ubuntu-22.04's innoextract 1.8
-  - Surge XT pluginsonly.zip is a plain zip with VST3 bundle at `Surge XT.vst3/Contents/x86_64-win/Surge XT.dll`
+  - Surge XT pluginsonly.zip: VST3 binary at `Surge XT.vst3/Contents/x86_64-win/Surge XT.vst3` (not .dll)
   - Asset URL resolved dynamically from GitHub Releases API (Nightly tag) — no hardcoded filename
-  - `vst-integration-test.mjs`: calls `WasiVST.load()` with 120s timeout, verifies boot state
+  - `vst-integration-test.mjs`: adds `text/html` mime, fixes plugin URL to SurgeXT.dll, calls `WasiVST.load()` with 120s timeout
   - Runs in parallel with `bundle-and-publish` (both depend on `build-qemu-wasm`)
 
 ## [Unreleased] - 2026-04-12

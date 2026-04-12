@@ -11,6 +11,7 @@ const plugin = join(dist, 'SurgeXT.dll');
 if (!existsSync(plugin)) throw new Error(`SurgeXT.dll not found at ${plugin}`);
 
 const mimeOf = p =>
+  p.endsWith('.html') ? 'text/html' :
   p.endsWith('.js') ? 'application/javascript' :
   p.endsWith('.mjs') ? 'application/javascript' :
   p.endsWith('.wasm') ? 'application/wasm' :
@@ -51,7 +52,7 @@ const result = await page.evaluate(async (pluginUrl) => {
   ]);
   vst.connect(ac.destination);
   return { state: window.__wasivst.instances[pluginUrl]?.state ?? 'unknown' };
-}, `${base}/Dexed.dll`);
+}, `${base}/SurgeXT.dll`);
 
 server.close();
 await browser.close();
