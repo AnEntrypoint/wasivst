@@ -8,9 +8,9 @@
 #include "../../include/vestige/aeffectx.h"
 #include "../../common/vst24.h"
 
-static VstIntPtr audio_master_callback(
+static intptr_t VST_CALL_CONV audio_master_callback(
     AEffect* /*effect*/, int opcode, int /*index*/,
-    VstIntPtr /*value*/, void* /*ptr*/, float /*opt*/)
+    intptr_t /*value*/, void* /*ptr*/, float /*opt*/)
 {
     switch (opcode) {
         case audioMasterVersion: return 2400;

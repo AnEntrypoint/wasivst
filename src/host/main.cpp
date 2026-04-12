@@ -10,10 +10,12 @@
 #include "vst3/vst3-host.h"
 #endif
 
+#ifdef WITH_VST3
 static bool is_vst3(const std::string& path) {
     return path.size() >= 5 &&
            path.substr(path.size() - 5) == ".vst3";
 }
+#endif
 
 int main() {
     SerialChannel ch;
