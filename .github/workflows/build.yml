@@ -172,10 +172,14 @@ jobs:
 
       - name: Download Dexed VST3 (Windows 64-bit)
         run: |
+          sudo apt-get install -y innoextract
           curl -L -o /tmp/dexed-win.zip \
             https://github.com/asb2m10/dexed/releases/download/v0.9.8/dexed-0.9.8-win.zip
-          unzip -o /tmp/dexed-win.zip -d /tmp/dexed
-          find /tmp/dexed -name 'Dexed.dll' | head -1 | xargs -I{} cp {} dist/Dexed.dll
+          unzip -p /tmp/dexed-win.zip 'dexed-0.9.8-win.exe' > /tmp/dexed-win.exe
+          mkdir -p /tmp/dexed
+          innoextract -d /tmp/dexed /tmp/dexed-win.exe
+          find /tmp/dexed -name 'Dexed.dll' -print -quit | xargs -I{} cp {} dist/Dexed.dll
+          test -f dist/Dexed.dll || (echo "Dexed.dll not found after extraction" && find /tmp/dexed -type f | head -30 && exit 1)
 
       - name: Install dev dependencies
         run: npm install
