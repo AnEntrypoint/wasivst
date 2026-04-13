@@ -128,9 +128,24 @@ jobs:
       - name: Copy worklet JS and build demo
         run: |
           cp src/worklet/wasivst.js dist/wasivst.js
-          cp src/worklet/wasivst-worklet.js dist/wasivst-worklet.js
           cp src/demo/coi-serviceworker.js dist/coi-serviceworker.js
           cp src/demo/index.html dist/index.html
+          # Bundle libv86.mjs into wasivst-worklet.js as a single self-contained
+          # classic script. AudioWorklet static imports fail silently in Chrome
+          # when the imported module uses APIs unavailable in worklet scope.
+          # Strip ES module export lines from libv86.mjs, then append the
+          # worklet body (minus its import line) to produce one bundled file.
+          node -e "
+            const fs = require('fs');
+            const lib = fs.readFileSync('dist/libv86.mjs', 'utf8')
+              .replace(/^export\s*\{[^}]*\};?/gm, '')
+              .replace(/^export\s+default\s+[^;]+;/gm, '')
+              .replace(/^export\s+let\s+\{[^}]+\}\s*=[^;]+;/gm, '');
+            const worklet = fs.readFileSync('src/worklet/wasivst-worklet.js', 'utf8')
+              .replace(/^import\s+\{[^}]+\}\s+from\s+'[^']+';?\s*\n/m, '');
+            fs.writeFileSync('dist/wasivst-worklet.js', lib + '\n' + worklet);
+            console.log('Bundled wasivst-worklet.js:', fs.statSync('dist/wasivst-worklet.js').size, 'bytes');
+          "
 
       - name: Bundle Dexed VST3 (64-bit) for demo
         run: |
@@ -181,8 +196,17 @@ jobs:
       - name: Copy worklet JS
         run: |
           cp src/worklet/wasivst.js dist/wasivst.js
-          cp src/worklet/wasivst-worklet.js dist/wasivst-worklet.js
           printf '<!doctype html><html><body></body></html>' > dist/index.html
+          node -e "
+            const fs = require('fs');
+            const lib = fs.readFileSync('dist/libv86.mjs', 'utf8')
+              .replace(/^export\s*\{[^}]*\};?/gm, '')
+              .replace(/^export\s+default\s+[^;]+;/gm, '')
+              .replace(/^export\s+let\s+\{[^}]+\}\s*=[^;]+;/gm, '');
+            const worklet = fs.readFileSync('src/worklet/wasivst-worklet.js', 'utf8')
+              .replace(/^import\s+\{[^}]+\}\s+from\s+'[^']+';?\s*\n/m, '');
+            fs.writeFileSync('dist/wasivst-worklet.js', lib + '\n' + worklet);
+          "
       - name: Download Surge XT VST3 (Windows 64-bit, pluginsonly zip)
         run: |
           ASSET_URL=$(curl -s https://api.github.com/repos/surge-synthesizer/surge/releases/tags/Nightly \
