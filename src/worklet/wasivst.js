@@ -182,7 +182,7 @@ export class WasiVST {
 
   #serialWrite(bytes) {
     if (this.#v86) {
-      this.#v86.serial0_send(bytes);
+      this.#v86.serial0_send(String.fromCharCode(...bytes));
       window.__wasivst.serial.bytesOut += bytes.length;
     }
   }
