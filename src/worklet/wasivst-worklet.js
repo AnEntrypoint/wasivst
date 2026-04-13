@@ -1,3 +1,5 @@
+import { V86 } from './libv86.mjs';
+
 const FRAME_TAG = { LOAD: 0x01, PROCESS: 0x02, PROCESS_RESP: 0x03, SET_PARAM: 0x04, GET_PARAM: 0x05, GET_PARAM_RESP: 0x06, LOG: 0x07 };
 
 class WasivstProcessor extends AudioWorkletProcessor {
@@ -15,11 +17,6 @@ class WasivstProcessor extends AudioWorkletProcessor {
   }
 
   async _init(wasmUrl, rootfsUrl, rootfsPartsUrl) {
-    // V86 is pre-loaded into globalThis by libv86-loader.js via addModule().
-    // Dynamic import() is not allowed in AudioWorkletGlobalScope.
-    const V86 = globalThis.V86;
-    if (!V86) throw new Error('wasivst: V86 not found — ensure libv86-loader.js was added via addModule before wasivst-worklet.js');
-
     const rootfsBuffer = rootfsPartsUrl
       ? await this._fetchParts(rootfsPartsUrl)
       : await fetch(rootfsUrl).then(r => r.arrayBuffer());
