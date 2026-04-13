@@ -281,7 +281,7 @@ This runs the plugin in a local QEMU instance without a browser.
 
 11. **docker create on FROM scratch requires explicit command.** `docker create --name tmp wasivst-guest` fails on FROM scratch images because the image has no default CMD. Even if the container never runs, you must provide a command arg: `docker create --name tmp wasivst-guest /null`. The arg is never executed (the create is immediate), but it is syntactically required.
 
-12. **mda TestTone is the official demo plugin, not mda Piano.** studiorack/mda v1.0.4 mda-win.zip does NOT contain mda Piano.dll. Available plugins: Bandisto, Leslie, Loudness, Talkbox, Detune, Vocoder, Delay, Dither, DubDelay, Splitter, VocInput, De-ess, Envelope, Image, ThruZero, BeatBox, Combo, Degrade, Dynamics, Limiter, MultiBand, Overdrive, RePsycho!, RezFilter, RingMod, RoundPan, Shepard, Stereo, SubSynth, **TestTone**, Tracker. The CI workflow extracts `mda TestTone.dll` (note the space in the filename) and bundles it as `dist/mda-TestTone.dll` for the GitHub Pages live demo.
+12. **Dexed VST3 is the official demo plugin.** mda plugins from studiorack/mda are **32-bit VST2** and cannot be loaded by the 64-bit Wine runtime. Dexed v1.0.1 from asb2m10/dexed provides a 64-bit VST3 (`Dexed.vst3/Contents/x86_64-win/Dexed.vst3`) with no extra assets required. The CI workflow extracts it from `Dexed-1.0.1-win.zip` and copies it to `dist/Dexed.vst3.dll`.
 
 13. **CI smoke test consolidated.** The duplicate smoke-test job was removed — `bundle-and-publish` now runs the smoke test inline, eliminating redundant execution.
 
