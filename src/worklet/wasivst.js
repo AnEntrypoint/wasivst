@@ -1,6 +1,7 @@
 
 const LIBV86_LOADER_URL = new URL('./libv86-loader.js', import.meta.url).href;
 const WORKLET_URL = new URL('./wasivst-worklet.js', import.meta.url).href;
+const WASM_URL = new URL('./wasivst-qemu.wasm', import.meta.url).href;
 const ROOTFS_URL = new URL('./rootfs.ext4', import.meta.url).href;
 const ROOTFS_PARTS_URL = new URL('./rootfs.parts.json', import.meta.url).href;
 
@@ -26,7 +27,7 @@ export class WasiVST {
     await audioCtx.audioWorklet.addModule(WORKLET_URL);
 
     const node = new AudioWorkletNode(audioCtx, 'wasivst-processor', {
-      processorOptions: { rootfsUrl: ROOTFS_URL, rootfsPartsUrl: ROOTFS_PARTS_URL },
+      processorOptions: { wasmUrl: WASM_URL, rootfsUrl: ROOTFS_URL, rootfsPartsUrl: ROOTFS_PARTS_URL },
       numberOfInputs: 1,
       numberOfOutputs: 1,
       outputChannelCount: [2],
@@ -68,11 +69,14 @@ export class WasiVST {
   }
 
   #waitForReady() {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const handler = (e) => {
         if (e.data?.type === 'ready') {
           this.#node.port.removeEventListener('message', handler);
           resolve();
+        } else if (e.data?.type === 'error') {
+          this.#node.port.removeEventListener('message', handler);
+          reject(new Error('wasivst worklet: ' + e.data.message));
         }
       };
       this.#node.port.addEventListener('message', handler);
@@ -81,7 +85,13 @@ export class WasiVST {
   }
 
   #onMessage(msg) {
-    if (msg.type === 'getParamResp') {
+    if (msg.type === 'error') {
+      console.error('wasivst worklet error:', msg.message);
+      if (window.__wasivst.instances[this.#pluginUrl]) {
+        window.__wasivst.instances[this.#pluginUrl].state = 'error';
+        window.__wasivst.instances[this.#pluginUrl].error = msg.message;
+      }
+    } else if (msg.type === 'getParamResp') {
       this.#paramResolvers.get(msg.id)?.(msg.value);
       this.#paramResolvers.delete(msg.id);
     } else if (msg.type === 'log') {

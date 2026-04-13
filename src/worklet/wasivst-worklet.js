@@ -6,13 +6,15 @@ class WasivstProcessor extends AudioWorkletProcessor {
     this._ready = false;
     this._rxBuf = [];
     this._v86 = null;
-    const { libv86Url, rootfsUrl, rootfsPartsUrl } = options.processorOptions ?? {};
-    if (!rootfsUrl) throw new Error('wasivst: rootfsUrl required');
-    this._init(libv86Url, rootfsUrl, rootfsPartsUrl);
+    const { wasmUrl, rootfsUrl, rootfsPartsUrl } = options.processorOptions ?? {};
+    if (!wasmUrl || !rootfsUrl) throw new Error('wasivst: wasmUrl and rootfsUrl required');
+    this._init(wasmUrl, rootfsUrl, rootfsPartsUrl).catch(e => {
+      this.port.postMessage({ type: 'error', message: e.message });
+    });
     this.port.onmessage = (e) => this._onMessage(e.data);
   }
 
-  async _init(libv86Url, rootfsUrl, rootfsPartsUrl) {
+  async _init(wasmUrl, rootfsUrl, rootfsPartsUrl) {
     // V86 is pre-loaded into globalThis by libv86-loader.js via addModule().
     // Dynamic import() is not allowed in AudioWorkletGlobalScope.
     const V86 = globalThis.V86;
@@ -21,8 +23,6 @@ class WasivstProcessor extends AudioWorkletProcessor {
     const rootfsBuffer = rootfsPartsUrl
       ? await this._fetchParts(rootfsPartsUrl)
       : await fetch(rootfsUrl).then(r => r.arrayBuffer());
-
-    const wasmUrl = libv86Url.replace('libv86.mjs', 'wasivst-qemu.wasm');
 
     this._v86 = new V86({
       wasm_path: wasmUrl,
