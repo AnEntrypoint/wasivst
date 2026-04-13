@@ -1,5 +1,5 @@
 
-const WORKLET_URL = new URL('./wasivst-worklet.js', import.meta.url).href;
+const WORKLET_URL = new URL('./wasivst-worklet.js?v=' + Date.now(), import.meta.url).href;
 const WASM_URL = new URL('./wasivst-qemu.wasm', import.meta.url).href;
 const ROOTFS_URL = new URL('./rootfs.ext4', import.meta.url).href;
 const ROOTFS_PARTS_URL = new URL('./rootfs.parts.json', import.meta.url).href;
