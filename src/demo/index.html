@@ -34,21 +34,20 @@ button:disabled { background: #444; cursor: default; }
 <body>
 <h1>wasivst</h1>
 <p>Run a Windows VST3 plugin (.dll) in the browser via WASM x86-64 emulation.</p>
-<p>Boot takes 10-30s: WASM emulator → Alpine Linux → Wine → plugin.</p>
-<input id="url" type="text" value="Dexed.vst3.dll" />
+<p>Boot takes 10-30s: WASM emulator → Alpine Linux → Wine → plugin. Enter a Wine path (Z:\...) to the plugin DLL.</p>
+<input id="url" type="text" value="Z:\\usr\\share\\plugins\\Dexed.vst3.dll" />
 <br>
 <button id="btn" onclick="load()">Load plugin</button>
 <div id="status">Ready.</div>
 <div id="logs"></div>
 <script type="module">
-const DEFAULT_PLUGIN = 'Dexed.vst3.dll';
+const DEFAULT_PLUGIN = 'Z:\\usr\\share\\plugins\\Dexed.vst3.dll';
 
 document.getElementById('url').value = DEFAULT_PLUGIN;
 
 window.load = async () => {
-  const rawUrl = document.getElementById('url').value.trim();
-  if (!rawUrl) return;
-  const pluginUrl = rawUrl.startsWith('http') ? rawUrl : (location.origin + location.pathname.replace(/[^/]+$/, '') + rawUrl);
+  const pluginUrl = document.getElementById('url').value.trim();
+  if (!pluginUrl) return;
   const btn = document.getElementById('btn');
   const status = document.getElementById('status');
   const logsEl = document.getElementById('logs');
