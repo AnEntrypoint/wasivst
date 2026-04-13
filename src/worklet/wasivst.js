@@ -1,6 +1,6 @@
 
+const LIBV86_LOADER_URL = new URL('./libv86-loader.js', import.meta.url).href;
 const WORKLET_URL = new URL('./wasivst-worklet.js', import.meta.url).href;
-const LIBV86_URL = new URL('./libv86.mjs', import.meta.url).href;
 const ROOTFS_URL = new URL('./rootfs.ext4', import.meta.url).href;
 const ROOTFS_PARTS_URL = new URL('./rootfs.parts.json', import.meta.url).href;
 
@@ -19,10 +19,14 @@ export class WasiVST {
   }
 
   static async load(audioCtx, pluginUrl) {
+    // libv86-loader.js must be added first — it imports V86 from libv86.mjs
+    // and assigns it to globalThis so the worklet processor can use it without
+    // a dynamic import() call, which AudioWorkletGlobalScope disallows.
+    await audioCtx.audioWorklet.addModule(LIBV86_LOADER_URL);
     await audioCtx.audioWorklet.addModule(WORKLET_URL);
 
     const node = new AudioWorkletNode(audioCtx, 'wasivst-processor', {
-      processorOptions: { libv86Url: LIBV86_URL, rootfsUrl: ROOTFS_URL, rootfsPartsUrl: ROOTFS_PARTS_URL },
+      processorOptions: { rootfsUrl: ROOTFS_URL, rootfsPartsUrl: ROOTFS_PARTS_URL },
       numberOfInputs: 1,
       numberOfOutputs: 1,
       outputChannelCount: [2],

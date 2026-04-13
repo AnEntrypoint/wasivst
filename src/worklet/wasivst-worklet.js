@@ -7,13 +7,16 @@ class WasivstProcessor extends AudioWorkletProcessor {
     this._rxBuf = [];
     this._v86 = null;
     const { libv86Url, rootfsUrl, rootfsPartsUrl } = options.processorOptions ?? {};
-    if (!libv86Url || !rootfsUrl) throw new Error('wasivst: libv86Url and rootfsUrl required');
+    if (!rootfsUrl) throw new Error('wasivst: rootfsUrl required');
     this._init(libv86Url, rootfsUrl, rootfsPartsUrl);
     this.port.onmessage = (e) => this._onMessage(e.data);
   }
 
   async _init(libv86Url, rootfsUrl, rootfsPartsUrl) {
-    const { V86 } = await import(libv86Url);
+    // V86 is pre-loaded into globalThis by libv86-loader.js via addModule().
+    // Dynamic import() is not allowed in AudioWorkletGlobalScope.
+    const V86 = globalThis.V86;
+    if (!V86) throw new Error('wasivst: V86 not found — ensure libv86-loader.js was added via addModule before wasivst-worklet.js');
 
     const rootfsBuffer = rootfsPartsUrl
       ? await this._fetchParts(rootfsPartsUrl)

@@ -129,6 +129,7 @@ jobs:
         run: |
           cp src/worklet/wasivst.js dist/wasivst.js
           cp src/worklet/wasivst-worklet.js dist/wasivst-worklet.js
+          cp src/worklet/libv86-loader.js dist/libv86-loader.js
           cp src/demo/coi-serviceworker.js dist/coi-serviceworker.js
           cp src/demo/index.html dist/index.html
 
@@ -182,6 +183,7 @@ jobs:
         run: |
           cp src/worklet/wasivst.js dist/wasivst.js
           cp src/worklet/wasivst-worklet.js dist/wasivst-worklet.js
+          cp src/worklet/libv86-loader.js dist/libv86-loader.js
           printf '<!doctype html><html><body></body></html>' > dist/index.html
       - name: Download Surge XT VST3 (Windows 64-bit, pluginsonly zip)
         run: |
