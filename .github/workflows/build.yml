@@ -138,9 +138,9 @@ jobs:
           node -e "
             const fs = require('fs');
             const lib = fs.readFileSync('dist/libv86.mjs', 'utf8')
-              .replace(/^export\s*\{[^}]*\};?/gm, '')
-              .replace(/^export\s+default\s+[^;]+;/gm, '')
-              .replace(/^export\s+let\s+\{[^}]+\}\s*=[^;]+;/gm, '');
+              .replace(/\bexport\s*\{\s*\}\s*;?/g, '')
+              .replace(/\bexport\s+default\s+[^;]+;/g, '')
+              .replace(/\bexport\s+let\s+\{[^}]+\}\s*=[^;]+;/g, '');
             // V86 is minified internally; expose it from module.exports
             const glue = '\nconst V86 = module.exports.V86;\n';
             const worklet = fs.readFileSync('src/worklet/wasivst-worklet.js', 'utf8')
@@ -202,9 +202,9 @@ jobs:
           node -e "
             const fs = require('fs');
             const lib = fs.readFileSync('dist/libv86.mjs', 'utf8')
-              .replace(/^export\s*\{[^}]*\};?/gm, '')
-              .replace(/^export\s+default\s+[^;]+;/gm, '')
-              .replace(/^export\s+let\s+\{[^}]+\}\s*=[^;]+;/gm, '');
+              .replace(/\bexport\s*\{\s*\}\s*;?/g, '')
+              .replace(/\bexport\s+default\s+[^;]+;/g, '')
+              .replace(/\bexport\s+let\s+\{[^}]+\}\s*=[^;]+;/g, '');
             // V86 is minified internally; expose it from module.exports
             const glue = '\nconst V86 = module.exports.V86;\n';
             const worklet = fs.readFileSync('src/worklet/wasivst-worklet.js', 'utf8')
