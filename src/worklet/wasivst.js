@@ -35,10 +35,11 @@ export class WasiVST {
     node.port.onmessage = (e) => instance.#onWorkletMessage(e.data);
     node.port.start();
 
+    window.__wasivst.instances[pluginUrl] = { state: 'loading', node };
+
     // Start V86 on the main thread — avoids AudioWorkletGlobalScope restrictions
     await instance.#startV86();
 
-    window.__wasivst.instances[pluginUrl] = { state: 'loading', node };
     return instance;
   }
 
@@ -91,18 +92,27 @@ export class WasiVST {
     });
 
     await new Promise((resolve) => {
-      this.#v86.add_listener('emulator-ready', () => {
-        // Notify worklet it can start processing
-        this.#port.postMessage({ type: 'ready' });
-        resolve();
-      });
+      this.#v86.add_listener('emulator-ready', () => resolve());
     });
 
-    // Load the plugin
+    // Send LOAD frame — serial is buffered, guest reads it after Alpine+Wine boots
     this.#serialWrite(this.#encodeLoad(this.#pluginUrl));
-    if (window.__wasivst.instances[this.#pluginUrl]) {
-      window.__wasivst.instances[this.#pluginUrl].state = 'ready';
-    }
+
+    // Wait for first byte from guest (guest has booted and processed the LOAD frame)
+    await new Promise((resolve) => {
+      const check = () => {
+        if (this.#rxBuf.length > 0) {
+          this.#port.postMessage({ type: 'ready' });
+          if (window.__wasivst.instances[this.#pluginUrl]) {
+            window.__wasivst.instances[this.#pluginUrl].state = 'ready';
+          }
+          resolve();
+        } else {
+          setTimeout(check, 500);
+        }
+      };
+      check();
+    });
   }
 
   #onWorkletMessage(msg) {
