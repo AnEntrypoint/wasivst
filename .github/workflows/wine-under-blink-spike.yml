@@ -10,9 +10,78 @@ on:
   push:
     paths:
       - 'tools/spikes/wine-under-blink.mjs'
+      - 'tools/spikes/dlopen-probe.mjs'
       - '.github/workflows/wine-under-blink-spike.yml'
 
 jobs:
+  dlopen-probe:
+    name: Can blink dlopen a guest .so?
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build musl dlopen probe + trivial .so into a rootfs
+        run: |
+          set -eux
+          mkdir -p rootfs
+          docker run --rm -v "$PWD:/out" alpine:3.19 sh -c '
+            apk add --no-cache gcc musl-dev
+            mkdir -p /b
+            # a trivial shared object exporting answer()
+            printf "int answer(void){return 42;}\n" > /b/trivial.c
+            gcc -shared -fPIC -o /b/libtrivial.so /b/trivial.c
+            # a dynamic program that dlopens it (musl dynamic, needs ld-musl).
+            # Build probe.c with printf lines (no heredoc -> no YAML/indent trap).
+            printf "%s\n" \
+              "#include <stdio.h>" \
+              "#include <dlfcn.h>" \
+              "int main(void){" \
+              "  void *h = dlopen(\"/libtrivial.so\", RTLD_NOW);" \
+              "  if(!h){ printf(\"DLOPEN_NULL: %s\\n\", dlerror()); return 1; }" \
+              "  int (*f)(void) = (int(*)(void))dlsym(h, \"answer\");" \
+              "  if(!f){ printf(\"DLSYM_NULL: %s\\n\", dlerror()); return 2; }" \
+              "  printf(\"DLOPEN_OK answer=%d\\n\", f());" \
+              "  return 0;" \
+              "}" > /b/probe.c
+            gcc -o /b/probe /b/probe.c -ldl
+            mkdir -p /rootfs/lib
+            cp /b/probe /rootfs/probe
+            cp /b/libtrivial.so /rootfs/libtrivial.so
+            # musl dynamic loader so the dynamic probe can start at all
+            cp /lib/ld-musl-x86_64.so.1 /rootfs/lib/ 2>/dev/null || true
+            cp -r /usr/lib/libc.* /rootfs/lib/ 2>/dev/null || true
+            tar -C /rootfs -cf /out/dlopen-rootfs.tar .
+          '
+          ls -lh dlopen-rootfs.tar
+
+      - uses: actions/checkout@v4
+        with:
+          repository: AnEntrypoint/webix
+          path: webix
+      - name: Install webix
+        working-directory: webix
+        run: npm install
+
+      - name: Run dlopen probe
+        continue-on-error: true
+        run: |
+          node tools/spikes/dlopen-probe.mjs "$PWD/webix" "$PWD/dlopen-rootfs.tar" \
+            > dlopen-output.txt 2>&1; echo "harness exit: $?" >> dlopen-output.txt
+          cat dlopen-output.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dlopen-probe
+          path: dlopen-output.txt
+          if-no-files-found: warn
+
+      - name: Surface dlopen verdict
+        run: |
+          echo "## blink dlopen probe" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat dlopen-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(none)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
   spike:
     name: Run Wine64 under blink
     runs-on: ubuntu-22.04
