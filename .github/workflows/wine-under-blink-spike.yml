@@ -25,15 +25,18 @@ jobs:
           mkdir -p rootfs
           # Use the official Alpine image's apk to install wine into ./rootfs.
           # Alpine v3.19 community ships wine for x86_64 (pkgs.alpinelinux.org).
-          docker run --rm -v "$PWD/rootfs:/rootfs" alpine:3.19 sh -c '
+          # Install wine into /rootfs AND tar it from inside the container, so
+          # root-owned files (etc/shadow, root/) are readable by the archiver.
+          docker run --rm -v "$PWD:/out" alpine:3.19 sh -c '
+            mkdir -p /rootfs
             apk add --no-cache --root /rootfs --initdb \
               --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/main \
               --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/community \
               --allow-untrusted \
               alpine-baselayout busybox musl wine || true
             ls -la /rootfs/usr/bin/ | grep -i wine || echo "NO wine binary in rootfs"
+            tar -C /rootfs -cf /out/alpine-wine64.tar .
           '
-          tar -C rootfs -cf alpine-wine64.tar .
           ls -lh alpine-wine64.tar
 
       - name: Build a trivial Win64 PE to LoadLibrary-test
