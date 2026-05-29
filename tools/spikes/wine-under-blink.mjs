@@ -38,23 +38,32 @@ if (!rootfsPath) {
 }
 
 const { createBlinkHost } = await import(
-  pathToFileURL(join(webixDir, "src/index.js")).href
+  pathToFileURL(join(webixDir, "src/x86_64-blink.js")).href
 );
 
-const warnings = [];
+// blinkenlib.wasm + glue live under the webix dir; createBlinkHost defaults to
+// CWD-relative paths, so point it at the webix container assets explicitly.
 const host = await createBlinkHost({
-  // capture blink's "unsupported syscall: __syscall_*" lines as the gap map
-  onStderr: (line) => {
-    if (/unsupported syscall/i.test(line)) warnings.push(line.trim());
-  },
+  wasmPath: join(webixDir, "containers/blinkenlib.wasm"),
+  gluePath: join(webixDir, "containers/blinkenlib.js"),
 });
 
 host.mountTarBytes(readFileSync(rootfsPath));
+
+// blink emits "unsupported syscall: __syscall_*" on stderr; collect them from
+// each runElf result as the syscall-gap map.
+const warnings = [];
+const collectGaps = (stderr) => {
+  for (const line of (stderr || "").split("\n")) {
+    if (/unsupported syscall/i.test(line)) warnings.push(line.trim());
+  }
+};
 
 const ver = await host.runElf(host.Module.FS.readFile("/usr/bin/wine64"), {
   argv: ["wine64", "--version"],
   progname: "/usr/bin/wine64",
 });
+collectGaps(ver.stderr);
 console.log("wine64 --version:");
 console.log("  exit:", ver.exitCode, "signal:", ver.signal ?? "none");
 console.log("  stdout:", JSON.stringify(ver.stdout));
@@ -66,6 +75,7 @@ if (pePath) {
     argv: ["wine64", "/trivial.exe"],
     progname: "/usr/bin/wine64",
   });
+  collectGaps(run.stderr);
   console.log("wine64 /trivial.exe:");
   console.log("  exit:", run.exitCode, "signal:", run.signal ?? "none");
   console.log("  stdout:", JSON.stringify(run.stdout));

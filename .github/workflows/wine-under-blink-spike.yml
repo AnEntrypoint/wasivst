@@ -63,7 +63,8 @@ jobs:
         run: |
           node tools/spikes/wine-under-blink.mjs \
             "$PWD/webix" "$PWD/alpine-wine64.tar" "$PWD/trivial.exe" \
-            | tee spike-output.txt
+            > spike-output.txt 2>&1; echo "harness exit: $?" >> spike-output.txt
+          cat spike-output.txt
 
       - name: Upload spike output + rootfs
         uses: actions/upload-artifact@v4
