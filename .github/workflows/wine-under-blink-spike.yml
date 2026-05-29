@@ -35,21 +35,26 @@ jobs:
             printf "%s\n" \
               "#include <stdio.h>" \
               "#include <dlfcn.h>" \
-              "int main(void){" \
-              "  void *h = dlopen(\"/libtrivial.so\", RTLD_NOW);" \
-              "  if(!h){ printf(\"DLOPEN_NULL: %s\\n\", dlerror()); return 1; }" \
-              "  int (*f)(void) = (int(*)(void))dlsym(h, \"answer\");" \
-              "  if(!f){ printf(\"DLSYM_NULL: %s\\n\", dlerror()); return 2; }" \
-              "  printf(\"DLOPEN_OK answer=%d\\n\", f());" \
+              "int main(int argc, char **argv){" \
+              "  const char *so = argc>1 ? argv[1] : \"/libtrivial.so\";" \
+              "  void *h = dlopen(so, RTLD_NOW);" \
+              "  if(!h){ printf(\"DLOPEN_NULL %s: %s\\n\", so, dlerror()); return 1; }" \
+              "  printf(\"DLOPEN_OK %s\\n\", so);" \
+              "  void *f = dlsym(h, \"answer\");" \
+              "  if(f){ printf(\"answer=%d\\n\", ((int(*)(void))f)()); }" \
               "  return 0;" \
               "}" > /b/probe.c
             gcc -o /b/probe /b/probe.c -ldl
-            mkdir -p /rootfs/lib
+            # build the probe INTO the wine rootfs so the real ntdll.so + its
+            # whole dependency chain are present to dlopen.
+            apk add --no-cache --root /rootfs --initdb \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/main \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/community \
+              --allow-untrusted \
+              alpine-baselayout busybox musl wine || true
             cp /b/probe /rootfs/probe
             cp /b/libtrivial.so /rootfs/libtrivial.so
-            # musl dynamic loader so the dynamic probe can start at all
-            cp /lib/ld-musl-x86_64.so.1 /rootfs/lib/ 2>/dev/null || true
-            cp -r /usr/lib/libc.* /rootfs/lib/ 2>/dev/null || true
+            echo "=== ntdll.so present? ==="; ls -l /rootfs/usr/lib/wine/x86_64-unix/ntdll.so || echo MISSING
             tar -C /rootfs -cf /out/dlopen-rootfs.tar .
           '
           ls -lh dlopen-rootfs.tar
@@ -62,11 +67,15 @@ jobs:
         working-directory: webix
         run: npm install
 
-      - name: Run dlopen probe
+      - name: Run dlopen probe (trivial .so, then real wine ntdll.so)
         continue-on-error: true
         run: |
-          node tools/spikes/dlopen-probe.mjs "$PWD/webix" "$PWD/dlopen-rootfs.tar" \
-            > dlopen-output.txt 2>&1; echo "harness exit: $?" >> dlopen-output.txt
+          {
+            echo "### trivial .so"
+            node tools/spikes/dlopen-probe.mjs "$PWD/webix" "$PWD/dlopen-rootfs.tar" "/libtrivial.so" || true
+            echo "### real wine ntdll.so"
+            node tools/spikes/dlopen-probe.mjs "$PWD/webix" "$PWD/dlopen-rootfs.tar" "/usr/lib/wine/x86_64-unix/ntdll.so" || true
+          } > dlopen-output.txt 2>&1
           cat dlopen-output.txt
 
       - uses: actions/upload-artifact@v4

@@ -28,8 +28,11 @@ const host = await createBlinkHost({
 });
 host.mountTarBytes(readFileSync(rootfsPath));
 
+// argv[4] optionally overrides the .so the in-guest probe dlopens (e.g. the
+// real wine ntdll.so) -- passed to /probe as its first argument.
+const target = process.argv[4] || process.env.TARGET_SO || "";
 const r = await host.runElf(host.Module.FS.readFile("/probe"), {
-  argv: ["/probe"],
+  argv: target ? ["/probe", target] : ["/probe"],
   progname: "/probe",
 });
 console.log("dlopen probe:");

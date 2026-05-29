@@ -28,3 +28,8 @@
   status: witnessed
   witness_needed: 'A spike: wine64 running a trivial Win64 PE under webix, with a syscall/feature gap list. This gates the entire webix-VST architecture.'
   witness_evidence: 'Spike runner written: tools/spikes/wine-under-blink.mjs mounts an Alpine+Wine64 rootfs tar in webix and runs wine64 --version + a trivial PE, capturing the unsupported-syscall gap map. CANNOT resolve true/false yet: requires building the Alpine+Wine64 musl rootfs tar (hundreds of MB, apk dep closure for wine; build on Linux/CI), which is not produced in this Windows session. The runner is the durable witness harness; running it on a real rootfs is the next gate. Alpine ships wine for x86_64 (witnessed) and webix mounts tars + runs ELF (witnessed 19/19), so the inputs exist; only the heavy rootfs build + slow NOJIT run remain.'
+- id: wine-version-dlopen-boundary
+  claim: Wine <5.0 has ntdll built into the loader (no ntdll.so dlopen); the unix/PE split requiring dlopen(ntdll.so) landed in Wine 5.0 (2020)
+  status: witnessed
+  witness_needed: winehq 5.0 announce or wine git history confirming the unixlib/ntdll.so split version; OR an Alpine old-branch wine package that has no /usr/lib/wine/x86_64-unix/ntdll.so
+  witness_evidence: 'Moot as a dlopen workaround: CI run 26645737560 proved blink CAN dlopen a guest .so, so we do NOT need a pre-5.0 Wine to avoid dlopen. The ntdll failure is a specific Wine-loader issue, not the dlopen mechanism. Old-Wine remains a possible fallback but is no longer the primary lever.'

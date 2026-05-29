@@ -307,3 +307,13 @@
   detail: 'The other route: teach blink to load guest ELF shared objects (dlopen). jart/blink is a userspace VM; supporting dlopen of guest .so means an in-VM ELF dynamic loader. Large effort; assess feasibility + whether lanmower/blink (webix fork) would take it. Compare cost vs the static-Wine route.'
   phase: EXECUTE
   status: pending
+- id: spike-isolate-blink-dlopen
+  subject: 'Decisive isolating test: does blink dlopen a trivial guest .so at all'
+  detail: 'Before building a static Wine, prove the dlopen wall cheaply: compile a tiny musl C program that dlopen("./libtrivial.so")+dlsym+call, build both as musl x86-64 ELF, runElf under blink. If dlopen returns NULL => blinks no-guest-dlopen is confirmed airtight and static-Wine is mandatory. If it works => the Wine ntdll failure is more specific (path/symbol), reopening cheaper fixes. Add to the spike workflow as a separate fast job.'
+  phase: EXECUTE
+  status: pending
+- id: probe-dlopen-real-ntdll
+  subject: 'Reproduce: dlopen the actual wine ntdll.so from the probe'
+  detail: 'blink dlopens a trivial .so fine. Narrow the Wine failure: extend the probe to dlopen /usr/lib/wine/x86_64-unix/ntdll.so directly (mount the wine rootfs) and print dlerror. If it loads => the failure is in Wines preloader/launcher path, not the .so itself. If it fails => capture the exact dlerror (missing symbol, TLS, init) which names the real gap. Decisive next step.'
+  phase: EXECUTE
+  status: pending
