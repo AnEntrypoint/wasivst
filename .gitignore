@@ -7,3 +7,13 @@ node_modules/
 .prd
 .codeinsight
 .gm-stop-verified
+
+# --- gm-managed: transient runtime emissions (do not commit) ---
+.claude/
+.plugkit-browser-profile/
+.gm/exec-spool/
+.gm/witness/
+.gm/*.log
+# --- end gm-managed ---
+.gm/disciplines/codeinsight/
+.gm/disciplines/codeinsight-vec/

@@ -1,0 +1,29 @@
+- id: v86-64bit-support
+  claim: v86 0.5.319 can run 64-bit (long mode) Wine + 64-bit Windows PE plugins at usable speed
+  status: witnessed
+  witness_needed: v86 docs/source confirming long-mode + a booted 64-bit Wine guest, OR a decision to swap emulator
+  witness_evidence: 'v86 README (github.com/copy/v86) verbatim: "Linux works pretty well. 64-bit kernels are not supported." Also lists CPU "64-bit extensions" (instructions only). Cannot boot a 64-bit kernel => cannot run 64-bit Wine => cannot run 64-bit VST DLLs. DISQUALIFIED for hard 64-bit requirement.'
+- id: sab-into-v86
+  claim: v86 exposes a memory region or device that can be backed by a SharedArrayBuffer for zero-copy worklet<->guest audio transport
+  status: witnessed
+  witness_needed: v86 API surface (memory access, mmap device, or filesystem9p shared region) in libv86.mjs
+  witness_evidence: 'v86 README lists virtio Filesystem (9p, jor1k-derived) and save/restore emulator state. 9p shared FS or guest-memory could carry audio, but moot: v86 cannot run the 64-bit guest (v86-64bit-support=false).'
+- id: current-stack-runs-at-all
+  claim: the current serial-based stack actually boots, loads Dexed, and returns audio in a browser today
+  status: witnessed
+  witness_needed: smoke-test.mjs / vst-integration-test.mjs result, or dist/ artifacts presence
+  witness_evidence: dist/ empty (ls dist shows nothing); v86 not in node_modules (ls node_modules/v86 => not installed); smoke-test.mjs only calls audioWorklet.addModule and asserts no error, never boots v86/loads plugin/processes audio. No end-to-end run has occurred.
+- id: realtime-budget
+  claim: emulated Wine+VST can process a 128-512 sample block within the audio callback deadline (~2.7-10ms at 48kHz)
+  status: witnessed
+  witness_needed: measured block process time, or analysis showing emulation overhead bound
+  witness_evidence: 'No 64-bit x86 engine has a wasm JIT backend. blink JIT relies on runtime native codegen (copying compiled C micro-ops) - impossible in sandboxed wasm => interpreter ~10x slower (blink -j note). Box64 has no wasm dynarec. QEMU TCG-to-wasm is interpreter-grade. A VST 128-sample block at 48kHz must finish in ~2.7ms; full x86-64 emulation of Wine+DSP under a wasm interpreter is very likely 10-100x over budget for non-trivial synths. Live realtime is AT-RISK; offline/buffered rendering is the achievable mode. NOTE: user reports an optimized blink in AnEntrypoint/webix (c:/dev/webix) that may change this budget - re-evaluate against webix benchmarks.'
+- id: wasm-jit-feasible
+  claim: Blink (or the webix engine) can have a JIT backend that runs inside wasm to recover the ~10x interpreter penalty and enable realtime VST audio
+  status: witnessed
+  witness_needed: 'Technical determination: wasm sandbox codegen constraints + whether a wasm-emitting dynarec (runtime WebAssembly.instantiate of generated modules) is viable for blink, with overhead estimate'
+  witness_evidence: 'webix AGENTS.md:93-94 (witnessed by the user, test.js 19/19): "JIT impossible. Blinks JIT emits native x86-64/aarch64 only; under wasm32 it is structurally impossible. NOJIT is permanent in-browser." REASON: wasm is a sandbox - you cannot mmap(PROT_EXEC) and run runtime-generated NATIVE bytes. Blinks JIT copies compiled C micro-op bodies (native machine code) at runtime; that technique cannot target the wasm sandbox. THE ONLY way to do runtime codegen in wasm is to EMIT WASM BYTECODE and WebAssembly.instantiate() it - a different JIT backend nobody has written for blink. Such a wasm-emitting dynarec is theoretically possible but: (a) instantiate() is async + has per-module overhead (kills tiny hot paths), (b) is a large new engineering effort, (c) still slower than native JIT. CONCLUSION: cannot make blinks EXISTING jit run in wasm; could in principle BUILD a wasm-emitting jit backend, but it is a major project with uncertain realtime payoff. For now NOJIT interpreter is the ceiling.'
+- id: wine-runs-under-blink
+  claim: Wine64 can run under blink/webix (NOJIT, no fork, ~150 syscalls) well enough to LoadLibrary and process a Win64 VST DLL
+  status: unknown
+  witness_needed: 'A spike: wine64 running a trivial Win64 PE under webix, with a syscall/feature gap list. This gates the entire webix-VST architecture.'

@@ -1,0 +1,3 @@
+## Resolved mutable: v86-64bit-support
+
+v86 README (github.com/copy/v86) verbatim: "Linux works pretty well. 64-bit kernels are not supported." Also lists CPU "64-bit extensions" (instructions only). Cannot boot a 64-bit kernel => cannot run 64-bit Wine => cannot run 64-bit VST DLLs. DISQUALIFIED for hard 64-bit requirement.

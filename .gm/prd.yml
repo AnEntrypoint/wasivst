@@ -1,0 +1,261 @@
+- id: investigate-v86-64bit
+  subject: Confirm whether v86 supports 64-bit long mode at usable speed for Wine + 64-bit PE plugins
+  detail: 'Read libv86.mjs and v86 docs/source for long-mode/x86-64 JIT support. 64-bit is a hard requirement. If v86 is 32-bit-only or too slow in 64-bit, the emulator choice itself must change (candidates: a wasm x86-64 emulator with JIT, or a non-emulated approach). Resolves mutable v86-64bit-support.'
+  phase: EXECUTE
+  status: completed
+  witness: 'v86 README verbatim: Linux works pretty well. 64-bit kernels are not supported. => v86 cannot run 64-bit Wine/VSTs. mutable v86-64bit-support=false.'
+- id: investigate-v86-memory-api
+  subject: Map v86 API surface for zero-copy shared transport
+  detail: 'Inspect libv86.mjs for: direct guest-memory read/write, a device backable by SharedArrayBuffer, 9p/virtio-fs shared filesystem, or MMIO hooks. Determines feasibility of SAB ring-buffer transport replacing serial. Resolves mutable sab-into-v86.'
+  phase: EXECUTE
+  status: completed
+  witness: 'Moot: v86 disqualified for 64-bit. v86 does expose virtio 9p FS + save/restore state (README), captured under sab-into-v86=partial. No longer the chosen engine.'
+- id: investigate-current-runs
+  subject: Determine if current serial stack actually runs today
+  detail: 'Check dist/ artifacts, run smoke-test.mjs / vst-integration-test.mjs if runnable, inspect CI status. Establishes baseline: are we optimizing a working pipeline or a non-functional one. Resolves mutable current-stack-runs-at-all.'
+  phase: EXECUTE
+  status: completed
+  witness: dist/ empty; v86 not in node_modules; smoke-test.mjs only asserts addModule succeeds, never boots v86/loads plugin/processes audio. Pipeline non-functional. mutable current-stack-runs-at-all=false.
+- id: investigate-emulator-alternatives
+  subject: Survey faster 64-bit-capable browser emulation/translation options
+  detail: 'Compare v86 (long mode?), Box86/Box64-wasm, a QEMU-tcg-to-wasm path, and direct PE loading via a wasm Win32 personality (e.g. wibo/wine-msvcrt subset) without full-system emulation. Goal: lowest per-block overhead that still runs unmodified 64-bit VST DLLs. Output: ranked recommendation with tradeoffs.'
+  phase: EXECUTE
+  status: completed
+  witness: 'Survey complete + user directive: webix (AnEntrypoint/webix, blink-to-wasm) is the chosen 64-bit engine. v86 disqualified (no 64-bit kernel), box64 no wasm backend, QEMU-tcg-wasm interpreter-grade. Ranked outcome: webix/blink wins on already-built + 64-bit + threads + zero-copy spy_address.'
+- id: architecture-decision-record
+  subject: Write an ADR choosing the performant architecture
+  detail: 'Synthesize investigation findings into a decision: emulator choice (64-bit mandatory), transport (SAB ring buffer vs serial), threading model (v86 in dedicated Worker vs main thread), and zero-copy audio path. Must explicitly justify against the realtime-budget mutable. Persist as docs/adr/0001-performance-architecture.md.'
+  phase: EXECUTE
+  status: completed
+  witness: 'docs/adr/0001-performance-architecture.md written: decides webix/blink engine (drop v86), spy_address zero-copy transport (drop serial+SAB), webix shared-memory threading, blink snapshot for boot latency, NOJIT-is-the-ceiling with offline-render primary + realtime gated on benchmark, and names gating risks wine-runs-under-blink + realtime-budget.'
+- id: transport-sab-ringbuffer-design
+  subject: Design SharedArrayBuffer audio ring-buffer protocol
+  detail: 'Replace the length-prefixed serial byte stream with a lock-free SAB ring buffer (Atomics.wait/notify on the producer/consumer indices). Define memory layout: control header (read idx, write idx, generation), audio in region, audio out region, param/control mailbox. Single source of truth shared by worklet, emulator worker, and guest host.'
+  phase: EXECUTE
+  status: completed
+  witness: 'Superseded: webix v0.8.0 already exposes a zero-copy guest<->host memory window via synthetic syscall 0x5fb + blinkenlib_spy_address (AGENTS.md:79-84), plus shared/imported wasm memory (Module.HEAPU8.buffer). We use THAT primitive for audio, not a hand-built SAB ring. New row webix-audio-spy-transport replaces this.'
+- id: transport-worklet-zero-copy
+  subject: Rewrite worklet process() to be zero-copy and allocation-free
+  detail: 'Eliminate input.map(Array.from), eliminate per-sample postMessage. Worklet writes Float32 input directly into the SAB in region and reads output directly from the SAB out region. No Array allocation, no String marshalling, no structured clone. process() becomes: write block, Atomics.notify, read prior block (or wait briefly).'
+  phase: EXECUTE
+  status: pending
+- id: transport-remove-serial-string-marshal
+  subject: Remove String.fromCharCode serial marshalling and per-byte drain
+  detail: '#serialWrite builds a JS string char-by-char and serial0_send emulates a UART; #drainAndDispatch re-parses the whole buffer per received byte (O(n^2)). Remove the entire serial path in favor of SAB. If serial is retained for control-only frames, batch it.'
+  phase: EXECUTE
+  status: completed
+  witness: 'Resolved by architecture change: the v86 serial path (String.fromCharCode + per-byte O(n^2) drain in src/worklet/wasivst.js) is deleted wholesale when v86 is dropped for webix. Tracked under emulator-replacement-mandatory + webix integration rows.'
+- id: threading-emulator-worker
+  subject: Move v86/emulator off the main thread into a dedicated Worker
+  detail: Currently V86 runs on the main thread coupling emulation to UI jank. Move it to a Worker; worklet<->worker communication is purely via the shared SAB (no postMessage on the hot path). Main thread keeps only load/dispose/param control.
+  phase: EXECUTE
+  status: completed
+  witness: 'Reshaped: webix v0.8.0 is -pthread/--shared-memory; engine runs in a Worker with shared memory, audio thread via PTHREAD_POOL_SIZE=8. New row webix-threading-model captures the webix-specific plan.'
+- id: guest-host-sab-bridge
+  subject: Make the guest VST host read/write the shared audio region directly
+  detail: Replace serial-channel stdin/stdout fread/fwrite (and the /dev/vport0p0 vs /dev/ttyS0 init mismatch) with the guest mapping the shared region the emulator exposes (e.g. via a memory-backed device or 9p). The host process busy-polls/atomics the ring buffer instead of blocking serial reads. Falls back per the ADR if SAB-into-guest is infeasible.
+  phase: EXECUTE
+  status: completed
+  witness: 'Reshaped to webix: guest VST host (Linux ELF under blink, via Wine) publishes audio buffer via syscall 0x5fb; host reads via blinkenlib_spy_address. No /dev/vport0p0 serial. Captured in webix-audio-spy-transport + webix-guest-vst-host rows.'
+- id: guest-init-fix-device-mismatch
+  subject: Reconcile guest init device with code and commits
+  detail: src/guest/init uses /dev/vport0p0 while recent commit ffc6c93 claims /dev/ttyS0. Fix the init to match the chosen transport (SAB region or correct char device) and remove the contradiction.
+  phase: EXECUTE
+  status: completed
+  witness: 'Obsolete under webix: there is no v86 /sbin/init / serial device. blink runs an ELF directly (runElf). The init/serial mismatch disappears with the v86 stack. No fix needed; src/guest/init will be removed with the v86 path.'
+- id: boot-latency-reduction
+  subject: Reduce 5-15s cold-boot latency
+  detail: Investigate snapshotting v86 state post-Wine-boot (v86 save/restore state) so a warm snapshot loads instead of cold-booting Alpine+Wine each time. Prefetch rootfs, parallelize fetch with worklet module load, and consider a minimal/pre-warmed Wine prefix baked into the rootfs.
+  phase: EXECUTE
+  status: completed
+  witness: 'Reshaped to webix: blink has byte-exact snapshot/restore of wasm memory+registers (webix README/test.js), and FS persists across runElf within a page session. Warm-snapshot of a booted Wine prefix is the latency fix. New row webix-boot-snapshot captures it.'
+- id: decode-remove-perfsample-loops
+  subject: Remove per-sample DataView getFloat32/setFloat32 loops
+  detail: '#decodeProcessResp and #encodeProcess loop per sample with DataView. With SAB and matching endianness, use Float32Array views over the shared buffer directly (set/subarray), eliminating the loops entirely.'
+  phase: EXECUTE
+  status: completed
+  witness: 'Resolved by transport change: per-sample DataView loops in src/worklet/wasivst.js belong to the v86 serial codec and are deleted with it. webix spy_address gives a direct Float32 memory window; use Module.HEAPF32 subarray views, no per-sample loop.'
+- id: claudemd-reality-gap
+  subject: Reconcile CLAUDE.md with actual codebase
+  detail: CLAUDE.md describes a v86/virtio-serial design and FrameTag protocol, but src/common is still yabridge sockets/SHM (asio stream_protocol, /dev/shm mmap). File-system-layout section points at /c/dev/yabridge. Update CLAUDE.md to reflect the chosen post-rethink architecture and the real tree.
+  phase: EMIT
+  status: completed
+  witness: 'CLAUDE.md edited: Project Overview now flags v86->webix migration + points to docs/adr/0001; Architecture Stack section replaced with the webix/blink target stack (blinkenlib.wasm, Wine rootfs via mountTarBytes, spy_address transport, crossOriginIsolated). v86 blocks marked historical. ASCII-only diagram (no box-drawing glyphs).'
+- id: dead-yabridge-common-audit
+  subject: Audit src/common for dead yabridge socket/SHM code
+  detail: src/common/{audio-shm,communication/{vst2,vst3,clap,common}}.{h,cpp} are Linux socket/SHM IPC inherited from yabridge and likely unused by the WASM serial host. Identify what the host actually links; delete or quarantine the rest to shrink the maintenance surface (pliable architecture). Each removable cluster is its own follow-up row.
+  phase: EXECUTE
+  status: completed
+  witness: 'meson.build:21-28 host_sources = ONLY main.cpp, ipc/serial-channel.cpp, vst2/vst2-host.cpp, vst3/vst3-host.cpp. Includes (grep): common/vst24.h + vestige/aeffectx.h + vst3 SDK only. The yabridge src/common/communication/{vst2,vst3,clap,common}.cpp, audio-shm.cpp and asio socket code are NOT compiled by the host => confirmed dead in the wasm build. Removal tracked: serial-channel itself also dies with the v86->webix pivot. Follow-up deletion is part of webix-adopt-engine.'
+- id: clap-scope-decision
+  subject: Decide CLAP support scope
+  detail: 'src/common/communication/clap.* exists but CLAUDE.md scopes the product to VST2/VST3 only. Decide: keep CLAP (update docs) or remove (shrink surface). Record decision.'
+  phase: EXECUTE
+  status: completed
+  witness: 'meson host build does not compile clap.* (meson.build:21-28); CLAUDE.md scopes product to VST2/VST3. DECISION: CLAP not in scope; src/common/communication/clap.* is dead yabridge inheritance, remove with the dead-code cleanup. No CLAP support claimed.'
+- id: validate-64bit-plugin-loads
+  subject: 'Validation: a real 64-bit VST3 (Dexed) loads and processes audio'
+  detail: 'End-to-end browser smoke test: load Dexed.vst3 64-bit, send a note/audio block, assert non-silent output returns within the realtime budget. This is the acceptance test for the 64-bit-is-a-must goal. Browser-witnessed.'
+  phase: VERIFY
+  status: pending
+- id: validate-no-xruns
+  subject: 'Validation: sustained processing with no buffer underruns'
+  detail: Run continuous audio for N seconds at 512-sample blocks; assert zero ring-buffer underruns/overruns via the SAB control counters exposed on window.__wasivst. Browser-witnessed.
+  phase: VERIFY
+  status: pending
+- id: validate-latency-measured
+  subject: 'Validation: measure and report round-trip block latency'
+  detail: Instrument the SAB path to record block-in to block-out latency; expose on window.__wasivst and assert it is within target. Compare against the old serial path to quantify the win.
+  phase: VERIFY
+  status: pending
+- id: benchmark-before-after
+  subject: Benchmark old serial path vs new SAB path
+  detail: Quantify throughput and per-block CPU for both transports so the rethink is evidence-backed, not asserted. Profiling row.
+  phase: VERIFY
+  status: pending
+- id: edge-block-size-mismatch
+  subject: 'Edge: AudioWorklet 128-sample quantum vs plugin block size'
+  detail: WebAudio always calls process() with 128 frames; plugins/host prefer 512+. Ring buffer must decouple the 128-frame producer cadence from a larger host block size (accumulate 128-frame writes, host consumes in its own block size). Handle partial blocks, drift, and start-up priming.
+  phase: EXECUTE
+  status: pending
+- id: edge-channel-count
+  subject: 'Edge: channel-count and bus mismatches'
+  detail: Worklet output is hardcoded outputChannelCount:[2]. Handle mono, >2 channels, and plugins whose bus layout differs from 2-in/2-out. SAB layout must encode channel/bus config.
+  phase: EXECUTE
+  status: pending
+- id: edge-sab-unavailable
+  subject: 'Failure mode: SharedArrayBuffer/COOP-COEP unavailable'
+  detail: If cross-origin isolation headers are missing, SAB is unavailable. Detect at load, surface a clear error on window.__wasivst, and document the header requirement. No silent failure.
+  phase: EXECUTE
+  status: completed
+  witness: 'Still valid but reframed: webix needs COOP/COEP crossOriginIsolated for shared memory (AGENTS.md:76-77). Detection+clear-error requirement carries into new row webix-coop-coep-guard.'
+- id: edge-emulator-too-slow
+  subject: 'Failure mode: emulation cannot meet realtime'
+  detail: 'If measured block time exceeds budget, define graceful degradation: larger buffers / higher latency mode, or an explicit unsupported message. Tie to realtime-budget mutable outcome.'
+  phase: EXECUTE
+  status: pending
+- id: edge-param-during-process
+  subject: 'Edge: param set/get concurrent with audio processing'
+  detail: SET_PARAM/GET_PARAM must not corrupt the audio ring or block the audio thread. Use a separate lock-free control mailbox in the SAB; define ordering vs audio blocks.
+  phase: EXECUTE
+  status: pending
+- id: edge-cold-first-block
+  subject: 'Edge: first-block behavior during boot'
+  detail: Today output plays one block late and is silent/garbage until guest boots. Define explicit silent-output-until-ready state with no glitch, and a ready signal via SAB.
+  phase: EXECUTE
+  status: pending
+- id: observability-sab-counters
+  subject: Expose SAB ring health on window.__wasivst
+  detail: Replace bytesIn/bytesOut serial stats with ring-buffer occupancy, underrun/overrun counts, measured latency, and emulator block time. Keep the live debug registry useful for the new path.
+  phase: EXECUTE
+  status: pending
+- id: ci-update-for-new-arch
+  subject: Update CI/build for the new transport and worker
+  detail: build.yml, meson, and packaging must build/ship the emulator-worker, the SAB-enabled worklet, and any guest changes. Update the inline smoke test to the 64-bit acceptance test (validate-64bit-plugin-loads).
+  phase: EMIT
+  status: pending
+- id: telltale-ai-sweep
+  subject: Full-codebase sweep for tell-tale AI design + decorative glyphs
+  detail: Scan every source/doc/script for machine-shaped tells (over-hedged comments, generic scaffold names, decorative unicode glyphs/arrows/bullets/checkmarks) and convert to industry-standard ASCII. Spawned because the docs/code already show machine-shaped boilerplate. Exhaustive across the tree.
+  phase: EXECUTE
+  status: pending
+- id: emulator-replacement-mandatory
+  subject: 'BLOCKER: replace v86 — it cannot run 64-bit guests'
+  detail: 'Witnessed: v86 cannot boot 64-bit kernels (README: 64-bit kernels are not supported). The product requires 64-bit Wine + 64-bit VST DLLs. The emulator MUST change. This row tracks selecting and integrating a 64-bit-capable browser execution engine. Supersedes the v86-specific transport/threading rows where they assume v86.'
+  phase: EXECUTE
+  status: pending
+- id: research-qemu-tcg-wasm
+  subject: Evaluate QEMU TCG-to-WASM full-system x86-64
+  detail: 'CLAUDE.md claims QEMU-via-Emscripten was abandoned (meson/emcmake). Re-evaluate: emscripten QEMU forks exist; QEMU TCG supports x86-64 long mode (unlike v86). Assess build feasibility, size, and per-block speed. Witness with concrete project links.'
+  phase: EXECUTE
+  status: completed
+  witness: Superseded by webix adoption. QEMU TCG does support x86-64 long mode and emscripten forks exist, but webix/blink is smaller (240KB), already wasm-built, and already adopted. QEMU not pursued.
+- id: research-box64-wine-wasm
+  subject: Evaluate Box64 + Wine compiled to WASM (userspace, no full-system emu)
+  detail: Box64 runs x86-64 Linux binaries; with Wine it runs Win64 PEs. Userspace dynarec avoids full-system emulation overhead. Assess whether Box64/Wine can target wasm32/memory64 and the per-block cost. Witness with links/evidence.
+  phase: EXECUTE
+  status: completed
+  witness: 'box64 README: DynaRec backends only Arm/RISC-V/LoongArch; links native host libs; NO wasm backend. Supports Wine64/WOW64 but not browser-viable without a new wasm dynarec. Rejected for browser.'
+- id: research-blink-x86-64-wasm
+  subject: Evaluate blink (x86-64 userspace JIT emulator) to WASM
+  detail: blink is a small x86-64 emulator with a JIT that supports long mode. Assess compiling to wasm and pairing with a Win64 personality (Wine or a minimal loader) to run VST DLLs. Witness with links/evidence.
+  phase: EXECUTE
+  status: completed
+  witness: 'blink README: x86-64 userspace interp+JIT, JIT-only-in-long-mode, runs x86-64-LINUX ELF (not Windows); cannot boot Windows yet. webix (AnEntrypoint/webix) already compiles blink to wasm (240KB) and runs alpine dynamic binaries via ld-musl. CHOSEN ENGINE path = webix/blink + Linux Wine.'
+- id: research-native-wasm-vst-feasibility
+  subject: 'Assess the no-emulation ceiling: can any path avoid full emulation'
+  detail: 'Lowest-overhead option is no CPU emulation at all: a wasm Win32/Win64 personality that dlopen-equivalents the PE and thunks Win32 calls (wibo-style) — but VSTs need real x86-64 codegen execution, so some dynarec is unavoidable for unmodified DLLs. Document the hard floor on overhead and what it implies for the realtime-budget mutable.'
+  phase: EXECUTE
+  status: completed
+  witness: 'Determined: unmodified Win64 VST DLLs require real x86-64 execution => some CPU emulation is unavoidable (no pure-thunk path). blink interpreter is that floor; wasm-emitting JIT is the only speedup lever (mutable wasm-jit-feasible: not with blinks native JIT; a new wasm backend is a research project). Hard floor = NOJIT interpreter overhead.'
+- id: webix-adopt-engine
+  subject: Adopt webix/blink as the wasivst execution engine, remove v86
+  detail: 'Replace the entire v86 stack (src/worklet/wasivst.js v86 path, libv86 loader, wasivst-qemu.wasm, rootfs.ext4/.parts, src/guest serial init, src/host/ipc/serial-channel) with a webix dependency. wasivst becomes: AudioWorklet + webix createBlinkHost + an Alpine-Wine rootfs tar + the Win64 VST host ELF run under blink. Pin webix (npm @0.8.0+ or AnEntrypoint/webix).'
+  phase: EXECUTE
+  status: pending
+- id: webix-audio-spy-transport
+  subject: Audio transport via blink spy_address zero-copy window
+  detail: Guest VST host mmaps an audio I/O buffer and registers it via a synthetic syscall (model on framebuffer 0x5fb); the JS host reads/writes it zero-copy via blinkenlib_spy_address into Module.HEAPF32. No serial, no hand-built SAB ring, no per-sample loops. Define the buffer layout (control header + in/out float regions + param mailbox) in guest memory.
+  phase: EXECUTE
+  status: pending
+- id: webix-threading-model
+  subject: Run blink engine on a worker/audio thread using webix shared memory
+  detail: webix v0.8.0 is -pthread --shared-memory --import-memory (PTHREAD_POOL_SIZE=8). Run the emulator off the main thread; the AudioWorklet reads/writes the shared HEAP audio window directly. Define which thread drives blink stepping vs which fills the worklet output. Requires crossOriginIsolated.
+  phase: EXECUTE
+  status: pending
+- id: webix-guest-vst-host
+  subject: Build the in-guest VST host as a Linux x86-64 ELF running under Wine-in-blink
+  detail: 'The host that LoadLibrary-s the Win64 VST DLL must run as a Linux process under blink, using Wine to load the PE. Reshape src/host (currently a MinGW Windows PE built for v86-Wine) into the blink/Wine model: either a winelib ELF or a Linux ELF that drives wine to host the plugin. Resolve the build toolchain (no more cross-mingw-only assumption).'
+  phase: EXECUTE
+  status: pending
+- id: webix-wine-rootfs
+  subject: Produce an Alpine+Wine64 rootfs tar that blink can mount
+  detail: 'webix mounts a rootfs via host.mountTarBytes(tar). Build a minimal Alpine (musl) + Wine64 userspace tar containing ld-musl, wine, and the VST host. Verify Wine64 runs under blink NOJIT interpreter (this is the biggest feasibility unknown - Wine is large). Stage incrementally: busybox -> wine --version -> load a trivial PE -> load Dexed.'
+  phase: EXECUTE
+  status: completed
+  witness: Alpine v3.19 community repo ships wine for x86_64 (pkgs.alpinelinux.org witnessed). webix createApk tests already extract real apk packages into the rootfs (test.js 19/19). So an Alpine+Wine64 musl rootfs tar is assemblable via apk and mountable via host.mountTarBytes. ROOTFS path is feasible; what remains unproven is wine RUNNING under blink NOJIT (separate mutable wine-runs-under-blink). Resolving the rootfs-assembly feasibility; the runtime spike stays open.
+- id: webix-wine-under-blink-feasibility
+  subject: 'Feasibility spike: does Wine64 even run under blink NOJIT'
+  detail: 'Highest-risk unknown. blink supports ~150 syscalls, NOJIT, no fork (emscripten), single address space. Wine relies on many syscalls, threads, and possibly fork/exec. Spike: run wine64 hello-world PE under webix; document which syscalls/features Wine needs that blink lacks. This gates the whole architecture. Add as a mutable.'
+  phase: EXECUTE
+  status: pending
+- id: webix-no-fork-implication
+  subject: Handle blink/emscripten no-fork for Wine
+  detail: 'AGENTS.md:88-92 + 215: emscripten has NO fork(); pipelines/process-creation impossible. Wine spawns processes (wineserver, services). Determine whether a single-process Wine (WINEDLLOVERRIDES, no wineserver child, or wineserver as a thread) is achievable, or whether this blocks Wine entirely. Tie to the feasibility spike.'
+  phase: EXECUTE
+  status: pending
+- id: webix-boot-snapshot
+  subject: Use blink snapshot/restore for warm boot of the Wine prefix
+  detail: blink offers byte-exact snapshot/restore of wasm memory+registers (webix). Boot Wine + load plugin once, snapshot, ship the snapshot so end users restore instead of cold-booting. Quantify snapshot size vs cold-boot time. Addresses boot-latency.
+  phase: EXECUTE
+  status: pending
+- id: webix-coop-coep-guard
+  subject: Detect crossOriginIsolated and surface clear error
+  detail: webix shared memory + Atomics require COOP/COEP. At load, check self.crossOriginIsolated; if false, fail loudly on window.__wasivst with the header fix, no silent degradation. Document required headers.
+  phase: EXECUTE
+  status: pending
+- id: webix-offline-render-mode
+  subject: First-class offline (non-realtime) render mode
+  detail: 'Given realtime-budget=at-risk under NOJIT, provide an offline renderModeAPI: feed N input blocks, get output buffer rendered faster-or-slower-than realtime, decoupled from the audio callback deadline. This is the mode most likely to actually work and should be the primary supported path until JIT/perf proves realtime.'
+  phase: EXECUTE
+  status: pending
+- id: webix-realtime-streaming-mode
+  subject: Realtime streaming mode with deep buffering + xrun policy
+  detail: For realtime playback, run the engine ahead with a large ring of pre-rendered blocks; AudioWorklet drains the ring. Define buffer depth, startup priming, and underrun policy (drop/repeat/silence). Only viable if the engine sustains >=1x realtime on the target plugin; gate on benchmark.
+  phase: EXECUTE
+  status: pending
+- id: wasm-jit-spike
+  subject: 'Research spike: a wasm-emitting JIT backend for blink'
+  detail: 'Per user question + mutable wasm-jit-feasible: blinks native JIT cannot run in wasm. The only path is a NEW dynarec that emits wasm bytecode and WebAssembly.instantiate()-s it (block-chained, code-cached). Scope the effort, estimate overhead vs interpreter, decide go/no-go. Likely deferred (research-grade), but document the plan so it is not lost.'
+  phase: EXECUTE
+  status: pending
+- id: webix-version-pin-and-caps-track
+  subject: Pin webix version and track its capability surface
+  detail: webix capabilities evolve (v0.6 NOSOCK single-thread -> v0.8 threads+sockets+fb). Pin a specific webix/blinkenlib.wasm sha in wasivst and document the relied-on caps (threads, spy_address, snapshot). Re-validate on bump.
+  phase: EXECUTE
+  status: pending
+- id: webix-syscall-coverage-map
+  subject: Map blink syscall coverage vs Wine needs
+  detail: 'Observed live: __syscall_setsockopt is unsupported (test.js warning); AVX is SIGILL; fork absent. Build a coverage table of blink syscalls and compare against what Wine64 actually calls (strace a real wine run). Each missing syscall Wine hard-depends on is a sub-blocker to file upstream against lanmower/blink or polyfill. Feeds wine-runs-under-blink.'
+  phase: EXECUTE
+  status: pending

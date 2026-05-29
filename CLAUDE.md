@@ -4,7 +4,16 @@
 
 **wasivst** is a WebAssembly runtime that enables unmodified Windows VST2/VST3 plugin DLLs to run in web browsers. It transforms the original yabridge codebase (a Wine plugin bridge for Linux) into a WASM-based architecture.
 
-**Not a Linux plugin bridge anymore.** This is a browser platform pivot: the goal is to run Windows .dll plugins in JavaScript environments via QEMU emulation.
+**Not a Linux plugin bridge anymore.** This is a browser platform pivot: the goal is to run unmodified 64-bit Windows .dll plugins in JavaScript environments.
+
+> ARCHITECTURE STATUS (2026-05-29): The engine is being migrated from v86 to
+> webix/blink. v86 was disqualified because it cannot boot a 64-bit kernel
+> ("64-bit kernels are not supported", v86 README), which makes 64-bit Wine and
+> 64-bit VST DLLs impossible. The current engine is webix (AnEntrypoint/webix),
+> a host over jart/blink compiled to wasm, which runs real x86-64 Linux
+> userspace in the browser. See `docs/adr/0001-performance-architecture.md` for
+> the full decision, transport, threading, and the NOJIT/realtime constraint.
+> The v86 sections preserved below are historical and being removed.
 
 ### Publishing
 
@@ -12,18 +21,23 @@
 - GitHub repo: AnEntrypoint/wasivst
 - License: GPL-3.0
 
-## Architecture Stack
+## Architecture Stack (target: webix/blink)
 
 ```
 Browser (main thread)
-  └─ AudioWorklet (wasivst-worklet.js)
-       └─ WASM: v86 x86-64 PC emulator (npm: v86 0.5.319, pre-built)
-            └─ Alpine Linux 3.19 guest (minimal rootfs, ext4 image)
-                 └─ Wine 64-bit
-                      └─ wasivst-host.exe (headless VST host, Windows PE via MinGW)
-                           └─ MyPlugin.vst3 (.dll)
-  └─ Web Audio API (SharedArrayBuffer + MessageChannel)
+  + AudioWorklet (wasivst-worklet.js) -- reads/writes shared HEAPF32 audio window
+  + Worker: webix/blink engine (blinkenlib.wasm, x86-64 userspace, NOJIT interp)
+       + Alpine + Wine64 rootfs (mounted via host.mountTarBytes)
+            + Linux VST host process (ELF, run via runElf)
+                 + Wine loads the Win64 VST DLL (LoadLibrary)
+                      + MyPlugin.vst3 (.dll)
+  + Audio transport: blink spy_address zero-copy memory window (NOT serial)
+  + Requires crossOriginIsolated (COOP/COEP) for shared memory
 ```
+
+Historical (removed): v86 x86-64 PC emulator + Alpine ext4 + virtio-serial.
+The block diagram below describing v86 is retained only until the migration
+lands; it does not reflect the chosen architecture.
 
 ### Key Components
 

@@ -1,0 +1,3 @@
+## Resolved mutable: realtime-budget
+
+No 64-bit x86 engine has a wasm JIT backend. blink JIT relies on runtime native codegen (copying compiled C micro-ops) - impossible in sandboxed wasm => interpreter ~10x slower (blink -j note). Box64 has no wasm dynarec. QEMU TCG-to-wasm is interpreter-grade. A VST 128-sample block at 48kHz must finish in ~2.7ms; full x86-64 emulation of Wine+DSP under a wasm interpreter is very likely 10-100x over budget for non-trivial synths. Live realtime is AT-RISK; offline/buffered rendering is the achievable mode. NOTE: user reports an optimized blink in AnEntrypoint/webix (c:/dev/webix) that may change this budget - re-evaluate against webix benchmarks.
