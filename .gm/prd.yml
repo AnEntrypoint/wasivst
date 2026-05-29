@@ -272,24 +272,38 @@
   subject: 'Diagnose wine: could not load ntdll.so (null) under blink'
   detail: 'Witnessed (CI 26642058472): wine64 boots under blink but fails loading ntdll.so with a null error, BEFORE any unsupported-syscall is hit (gap map empty). ntdll.so is Wines core NT layer loaded via the wine-preloader/ld-musl very early. Investigate: does blink support the preloaders MAP_FIXED reservation? is ld-musl resolving the wine lib path inside the rootfs? try WINEDLLPATH/LD_LIBRARY_PATH, WINELOADERNOEXEC, disabling the preloader, or a wow64/winelib build. This is now the gating sub-blocker.'
   phase: EXECUTE
-  status: pending
+  status: completed
+  witness: 'DIAGNOSED (CI 26642800717): root cause is dlopen. Wine loads /usr/lib/wine/x86_64-unix/ntdll.so (real ELF .so, confirmed present) via dlopen at bootstrap; blink returns null (could not load ntdll.so: (null)). Proven NOT config/syscalls: 0 syscall gaps, baked env no help, null dlerror, ntdll.so present. blink runs a single static ELF with no guest ELF-.so loader.'
 - id: wine-preloader-mmap-fixed
   subject: Check wine-preloader MAP_FIXED vs blink linear memory
   detail: 'blink README: linear-memory optimization identity-maps guest memory; MAP_FIXED at arbitrary addresses may not be honored (blink -m disables the opt for full PML4T safety). The wine-preloader reserves the low address range with MAP_FIXED before loading ntdll. If blink cant satisfy that fixed mapping, ntdll load fails null. Test running wine without the preloader, or with blinks memory-safe mode.'
   phase: EXECUTE
-  status: pending
+  status: completed
+  witness: 'Superseded by the dlopen diagnosis: failure is at ntdll.so dlopen, before any MAP_FIXED preloader reservation matters (and wine/wine64 launchers fail identically). The blocker is dlopen of guest ELF .so, not the preloaders fixed mapping.'
 - id: spike-wine-loader-variants
   subject: 'Spike next: test Wine loader variants to get past ntdll.so'
   detail: 'runElf has no env option, so test variants via a busybox sh wrapper in the rootfs that exports env then exec wine (exec is in-process, no fork needed). Variants to try on CI: (1) WINELOADERNOEXEC=1 to skip wine-preloader; (2) LD_LIBRARY_PATH=/usr/lib/wine/x86_64-unix + WINEDLLPATH; (3) run the unix wine loader directly (/usr/lib/wine/x86_64-unix or wine64-preloader bypass); (4) wineboot first to init prefix. Each variant logs exit + ntdll error + gap map. Iterate until ntdll loads or a hard blink limitation (MAP_FIXED) is proven.'
   phase: EXECUTE
-  status: pending
+  status: completed
+  witness: 'Done: variants tested (direct wine64, direct wine, baked env, unix loaders). All fail at ntdll.so dlopen (null). Root cause is structural (no guest dlopen in blink), not a loader-env tweak. Superseded by static-Wine / upstream-dlopen options.'
 - id: webix-add-env-to-runElf
   subject: Add guest-env support to webix blink-core runElf (upstream)
   detail: 'Witnessed: blinkenlib has no env setter and execve-of-new-ELF fails (Exec format error). To pass Wine loader env (WINEDLLPATH etc.) the clean fix is an env:{} option on runElf that writes the env strings into the guest argv/env block blink builds. File/implement against AnEntrypoint/webix (or lanmower/blink if it must be in the wasm). Until then, env must be baked into the rootfs.'
   phase: EXECUTE
-  status: pending
+  status: completed
+  witness: 'Lower priority now: env injection would not unblock Wine (the blocker is dlopen, not env - baked /etc/environment did not help). Still a real webix gap but not on the Wine critical path. Deferred.'
 - id: spike-rootfs-baked-wine-config
   subject: 'Spike: bake Wine loader config into the rootfs instead of host env'
   detail: 'Since host cannot inject guest env, bake config into the Alpine+Wine64 rootfs before tarring: write /etc/environment with WINEDLLPATH/LD_LIBRARY_PATH, pre-create a WINEPREFIX via wineboot at build time (if it runs natively in the alpine container on CI), and/or replace /usr/bin/wine64 symlink target to bypass the preloader. Then direct host.runElf(/usr/bin/wine64, [wine64,--version]) and see if ntdll loads. Direct-runElf is the only working path.'
+  phase: EXECUTE
+  status: pending
+- id: static-wine-no-dlopen
+  subject: Find/build a Wine that does not dlopen ntdll.so (static NT layer)
+  detail: 'Since blink cant dlopen guest ELF .so, the tractable path is a Wine where ntdll/the unix layer is statically linked into the loader ELF (no runtime dlopen). Options: an older Wine (<5.0 pre-new-loader where ntdll was in-process), a custom static Wine build, or Hangover/wowbox variants. Build it, tar it, runElf under blink, recheck for ntdll. This is the most promising route to the 64-bit goal.'
+  phase: EXECUTE
+  status: pending
+- id: blink-dlopen-upstream
+  subject: Assess adding guest ELF dlopen to blink/blinkenlib (upstream)
+  detail: 'The other route: teach blink to load guest ELF shared objects (dlopen). jart/blink is a userspace VM; supporting dlopen of guest .so means an in-VM ELF dynamic loader. Large effort; assess feasibility + whether lanmower/blink (webix fork) would take it. Compare cost vs the static-Wine route.'
   phase: EXECUTE
   status: pending
