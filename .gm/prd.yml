@@ -268,3 +268,13 @@
   blockedBy: external
   status: completed
   witness: 'Resolved: user authorized unarchive; gh api PATCH repos/AnEntrypoint/wasivst archived=false returned archived:false; git push -u origin rethink/webix-architecture succeeded (new branch on origin). Commit 4aaa2aa is on origin. No longer blocked.'
+- id: wine-ntdll-load-failure
+  subject: 'Diagnose wine: could not load ntdll.so (null) under blink'
+  detail: 'Witnessed (CI 26642058472): wine64 boots under blink but fails loading ntdll.so with a null error, BEFORE any unsupported-syscall is hit (gap map empty). ntdll.so is Wines core NT layer loaded via the wine-preloader/ld-musl very early. Investigate: does blink support the preloaders MAP_FIXED reservation? is ld-musl resolving the wine lib path inside the rootfs? try WINEDLLPATH/LD_LIBRARY_PATH, WINELOADERNOEXEC, disabling the preloader, or a wow64/winelib build. This is now the gating sub-blocker.'
+  phase: EXECUTE
+  status: pending
+- id: wine-preloader-mmap-fixed
+  subject: Check wine-preloader MAP_FIXED vs blink linear memory
+  detail: 'blink README: linear-memory optimization identity-maps guest memory; MAP_FIXED at arbitrary addresses may not be honored (blink -m disables the opt for full PML4T safety). The wine-preloader reserves the low address range with MAP_FIXED before loading ntdll. If blink cant satisfy that fixed mapping, ntdll load fails null. Test running wine without the preloader, or with blinks memory-safe mode.'
+  phase: EXECUTE
+  status: pending
