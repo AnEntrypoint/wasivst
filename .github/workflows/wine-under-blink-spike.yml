@@ -40,12 +40,11 @@ jobs:
             # blink cannot inject guest env -> bake the Wine loader config into
             # the rootfs so a direct runElf(wine64) picks it up.
             mkdir -p /rootfs/etc
-            cat > /rootfs/etc/environment <<ENVEOF
-WINEDLLPATH=/usr/lib/wine/x86_64-windows:/usr/lib/wine/x86_64-unix
-LD_LIBRARY_PATH=/usr/lib/wine/x86_64-unix:/usr/lib
-WINEDEBUG=+loaddll,+module
-WINEPREFIX=/root/.wine
-ENVEOF
+            printf "%s\n" \
+              "WINEDLLPATH=/usr/lib/wine/x86_64-windows:/usr/lib/wine/x86_64-unix" \
+              "LD_LIBRARY_PATH=/usr/lib/wine/x86_64-unix:/usr/lib" \
+              "WINEDEBUG=+loaddll,+module" \
+              "WINEPREFIX=/root/.wine" > /rootfs/etc/environment
             tar -C /rootfs -cf /out/alpine-wine64.tar .
           '
           ls -lh alpine-wine64.tar
