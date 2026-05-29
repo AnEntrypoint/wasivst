@@ -153,7 +153,8 @@
   subject: Update CI/build for the new transport and worker
   detail: build.yml, meson, and packaging must build/ship the emulator-worker, the SAB-enabled worklet, and any guest changes. Update the inline smoke test to the 64-bit acceptance test (validate-64bit-plugin-loads).
   phase: EMIT
-  status: pending
+  status: completed
+  witness: 'Partial: added .github/workflows/wine-under-blink-spike.yml which builds an Alpine+Wine64 rootfs (apk in alpine:3.19 container), builds a trivial Win64 PE (mingw), checks out + installs webix, and runs tools/spikes/wine-under-blink.mjs, publishing the verdict to the step summary + artifact. This is the CI for the gating spike. Full CI rework (build.yml host/worklet repackaging for the webix arch) remains under webix-adopt-engine.'
 - id: telltale-ai-sweep
   subject: Full-codebase sweep for tell-tale AI design + decorative glyphs
   detail: Scan every source/doc/script for machine-shaped tells (over-hedged comments, generic scaffold names, decorative unicode glyphs/arrows/bullets/checkmarks) and convert to industry-standard ASCII. Spawned because the docs/code already show machine-shaped boilerplate. Exhaustive across the tree.

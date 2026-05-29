@@ -1,0 +1,80 @@
+name: wine-under-blink spike
+
+# Architecture-gating feasibility test (docs/adr/0001-performance-architecture.md):
+# build an Alpine + Wine64 musl rootfs, mount it in webix, run `wine64 --version`
+# under blink (NOJIT interpreter), and capture the unsupported-syscall gap map.
+# The verdict + gap map land in the job log and as an artifact.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/spikes/wine-under-blink.mjs'
+      - '.github/workflows/wine-under-blink-spike.yml'
+
+jobs:
+  spike:
+    name: Run Wine64 under blink
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Alpine + Wine64 rootfs (apk in a container)
+        run: |
+          set -eux
+          mkdir -p rootfs
+          # Use the official Alpine image's apk to install wine into ./rootfs.
+          # Alpine v3.19 community ships wine for x86_64 (pkgs.alpinelinux.org).
+          docker run --rm -v "$PWD/rootfs:/rootfs" alpine:3.19 sh -c '
+            apk add --no-cache --root /rootfs --initdb \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/main \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/community \
+              --allow-untrusted \
+              alpine-baselayout busybox musl wine || true
+            ls -la /rootfs/usr/bin/ | grep -i wine || echo "NO wine binary in rootfs"
+          '
+          tar -C rootfs -cf alpine-wine64.tar .
+          ls -lh alpine-wine64.tar
+
+      - name: Build a trivial Win64 PE to LoadLibrary-test
+        run: |
+          set -eux
+          sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+          printf '#include <windows.h>\nint main(void){return 7;}\n' > trivial.c
+          x86_64-w64-mingw32-gcc -o trivial.exe trivial.c
+          ls -lh trivial.exe
+
+      - name: Checkout webix engine
+        uses: actions/checkout@v4
+        with:
+          repository: AnEntrypoint/webix
+          path: webix
+
+      - name: Install webix
+        working-directory: webix
+        run: npm install
+
+      - name: Run the spike harness
+        id: spike
+        continue-on-error: true
+        run: |
+          node tools/spikes/wine-under-blink.mjs \
+            "$PWD/webix" "$PWD/alpine-wine64.tar" "$PWD/trivial.exe" \
+            | tee spike-output.txt
+
+      - name: Upload spike output + rootfs
+        uses: actions/upload-artifact@v4
+        with:
+          name: wine-under-blink-spike
+          path: |
+            spike-output.txt
+            alpine-wine64.tar
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Surface verdict
+        run: |
+          echo "## Wine-under-blink spike" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat spike-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no output)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
