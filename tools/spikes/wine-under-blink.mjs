@@ -59,62 +59,52 @@ const collectGaps = (stderr) => {
   }
 };
 
-// runElf has no env option, and blink has no fork -- but `exec` (no fork) works.
-// So drive each loader variant through busybox `sh -c 'export ...; exec wine ...'`,
-// which sets env in-process then execs wine over the same blink process.
+// Witnessed (CI 26642496885): blink cannot execve a different ELF over a
+// running guest ("Exec format error", hangs), and exposes no guest-env setter.
+// So the ONLY working path is a direct runElf of the wine binary with argv;
+// any loader env (WINEDLLPATH, WINEDEBUG, WINELOADERNOEXEC) must be BAKED into
+// the rootfs (e.g. /etc/environment) at build time, not injected here.
 const FS = host.Module.FS;
-const busybox = (() => {
-  for (const p of ["/bin/busybox", "/usr/bin/busybox"]) {
-    try { return FS.readFile(p); } catch (_) {}
-  }
-  throw new Error("no busybox in rootfs");
-})();
 
-// Witnessed baseline (run 26642058472): plain wine64 --version =>
-// "could not load ntdll.so: (null)", 0 unsupported syscalls. These variants
-// probe whether the wine-preloader / lib-path / loader is the cause.
-const variants = [
-  { name: "plain wine64 --version", sh: "exec /usr/bin/wine64 --version" },
-  { name: "WINELOADERNOEXEC (skip preloader)", sh: "export WINELOADERNOEXEC=1; exec /usr/bin/wine64 --version" },
-  { name: "explicit WINEDLLPATH+LD_LIBRARY_PATH", sh: "export WINEDLLPATH=/usr/lib/wine/x86_64-windows:/usr/lib/wine/x86_64-unix; export LD_LIBRARY_PATH=/usr/lib/wine/x86_64-unix:/usr/lib; exec /usr/bin/wine64 --version" },
-  { name: "unix wine loader directly", sh: "exec /usr/lib/wine/x86_64-unix/wine64 --version 2>&1 || exec /usr/lib/wine/wine64 --version" },
-  { name: "WINEDEBUG=+loaddll wine64 --version", sh: "export WINEDEBUG=+loaddll,+module; exec /usr/bin/wine64 --version" },
+// Try each candidate wine entry binary directly. wine64 -> wine (a small
+// launcher); also probe the unix loader and the real wine64 ELF if present.
+const candidates = [
+  "/usr/bin/wine64",
+  "/usr/bin/wine",
+  "/usr/lib/wine/x86_64-unix/wine64",
+  "/usr/lib/wine/x86_64-unix/wine",
 ];
 
-const results = [];
-for (const v of variants) {
+let ver = { exitCode: 1, stdout: "" };
+for (const bin of candidates) {
+  let bytes;
+  try { bytes = FS.readFile(bin); } catch (_) { console.log(`(skip ${bin}: not in rootfs)`); continue; }
   let r;
   try {
-    r = await host.runElf(busybox, { argv: ["sh", "-c", v.sh], progname: "/bin/busybox" });
+    r = await host.runElf(bytes, { argv: [bin, "--version"], progname: bin });
   } catch (e) {
     r = { exitCode: -1, stdout: "", stderr: "harness error: " + e.message, signal: null };
   }
   collectGaps(r.stderr);
-  const past = !/could not load ntdll/i.test(r.stderr || "") && !/ntdll/i.test(r.stderr || "");
-  results.push({ name: v.name, exit: r.exitCode, signal: r.signal ?? "none", pastNtdll: past });
-  console.log(`--- variant: ${v.name}`);
-  console.log("  exit:", r.exitCode, "signal:", r.signal ?? "none");
+  const past = !/ntdll/i.test(r.stderr || "");
+  console.log(`--- direct runElf: ${bin} --version`);
+  console.log("  exit:", r.exitCode, "signal:", r.signal ?? "none", past ? "[PAST-NTDLL]" : "[ntdll-fail]");
   console.log("  stdout:", JSON.stringify((r.stdout || "").slice(0, 512)));
   console.log("  stderr:", JSON.stringify((r.stderr || "").slice(0, 1024)));
+  if (r.exitCode === 0 && /wine/i.test(r.stdout || "")) { ver = r; break; }
+  if (past) ver = { exitCode: 0, stdout: "wine (past ntdll via " + bin + ")" };
 }
-
-// keep `ver` for the final verdict: any variant that printed a wine version
-const ver = {
-  exitCode: results.some((r) => r.exit === 0) ? 0 : 1,
-  stdout: results.some((r) => r.pastNtdll) ? "wine (past ntdll)" : "",
-};
-console.log("\nvariant summary:");
-for (const r of results) console.log(`  [${r.pastNtdll ? "PAST-NTDLL" : "ntdll-fail"}] exit=${r.exit} ${r.name}`);
 
 if (pePath) {
   FS.writeFile("/trivial.exe", readFileSync(pePath));
-  const run = await host.runElf(busybox, {
-    argv: ["sh", "-c", "exec /usr/bin/wine64 /trivial.exe"],
-    progname: "/bin/busybox",
-  });
-  collectGaps(run.stderr);
-  console.log("wine64 /trivial.exe:");
-  console.log("  exit:", run.exitCode, "stderr:", JSON.stringify((run.stderr || "").slice(0, 512)));
+  let wb;
+  try { wb = FS.readFile("/usr/bin/wine64"); } catch (_) {}
+  if (wb) {
+    const run = await host.runElf(wb, { argv: ["/usr/bin/wine64", "/trivial.exe"], progname: "/usr/bin/wine64" });
+    collectGaps(run.stderr);
+    console.log("wine64 /trivial.exe:");
+    console.log("  exit:", run.exitCode, "stderr:", JSON.stringify((run.stderr || "").slice(0, 512)));
+  }
 }
 
 const uniqueGaps = [...new Set(warnings)].sort();

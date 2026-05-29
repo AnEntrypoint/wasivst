@@ -35,6 +35,17 @@ jobs:
               --allow-untrusted \
               alpine-baselayout busybox musl wine || true
             ls -la /rootfs/usr/bin/ | grep -i wine || echo "NO wine binary in rootfs"
+            echo "=== wine lib layout ==="; find /rootfs -name "ntdll*" -o -name "wine64*" -o -name "wine-preloader" 2>/dev/null | head -40
+            echo "=== file type of wine launcher ==="; file /rootfs/usr/bin/wine /rootfs/usr/bin/wine64 2>/dev/null || true
+            # blink cannot inject guest env -> bake the Wine loader config into
+            # the rootfs so a direct runElf(wine64) picks it up.
+            mkdir -p /rootfs/etc
+            cat > /rootfs/etc/environment <<ENVEOF
+WINEDLLPATH=/usr/lib/wine/x86_64-windows:/usr/lib/wine/x86_64-unix
+LD_LIBRARY_PATH=/usr/lib/wine/x86_64-unix:/usr/lib
+WINEDEBUG=+loaddll,+module
+WINEPREFIX=/root/.wine
+ENVEOF
             tar -C /rootfs -cf /out/alpine-wine64.tar .
           '
           ls -lh alpine-wine64.tar
