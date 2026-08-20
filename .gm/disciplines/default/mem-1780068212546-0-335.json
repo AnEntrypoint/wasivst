@@ -1,0 +1,3 @@
+## Resolved mutable: wine-version-dlopen-boundary
+
+Moot as a dlopen workaround: CI run 26645737560 proved blink CAN dlopen a guest .so, so we do NOT need a pre-5.0 Wine to avoid dlopen. The ntdll failure is a specific Wine-loader issue, not the dlopen mechanism. Old-Wine remains a possible fallback but is no longer the primary lever.

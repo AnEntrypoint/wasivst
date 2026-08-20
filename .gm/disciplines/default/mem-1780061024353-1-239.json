@@ -1,0 +1,3 @@
+## Resolved mutable: sab-into-v86
+
+v86 README lists virtio Filesystem (9p, jor1k-derived) and save/restore emulator state. 9p shared FS or guest-memory could carry audio, but moot: v86 cannot run the 64-bit guest (v86-64bit-support=false).

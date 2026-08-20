@@ -1,0 +1,1 @@
+rethink wasivst architecture to be as performant as possible for running 64-bit VSTs in the browser; gm-skill governs everything

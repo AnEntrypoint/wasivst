@@ -1,0 +1,3 @@
+## Resolved mutable: wine-runs-under-blink
+
+Spike runner written: tools/spikes/wine-under-blink.mjs mounts an Alpine+Wine64 rootfs tar in webix and runs wine64 --version + a trivial PE, capturing the unsupported-syscall gap map. CANNOT resolve true/false yet: requires building the Alpine+Wine64 musl rootfs tar (hundreds of MB, apk dep closure for wine; build on Linux/CI), which is not produced in this Windows session. The runner is the durable witness harness; running it on a real rootfs is the next gate. Alpine ships wine for x86_64 (witnessed) and webix mounts tars + runs ELF (witnessed 19/19), so the inputs exist; only the heavy rootfs build + slow NOJIT run remain.

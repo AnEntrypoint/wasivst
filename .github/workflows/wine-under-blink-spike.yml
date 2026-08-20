@@ -1,0 +1,172 @@
+name: wine-under-blink spike
+
+# Architecture-gating feasibility test (docs/adr/0001-performance-architecture.md):
+# build an Alpine + Wine64 musl rootfs, mount it in webix, run `wine64 --version`
+# under blink (NOJIT interpreter), and capture the unsupported-syscall gap map.
+# The verdict + gap map land in the job log and as an artifact.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/spikes/wine-under-blink.mjs'
+      - 'tools/spikes/dlopen-probe.mjs'
+      - '.github/workflows/wine-under-blink-spike.yml'
+
+jobs:
+  dlopen-probe:
+    name: Can blink dlopen a guest .so?
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build musl dlopen probe + trivial .so into a rootfs
+        run: |
+          set -eux
+          mkdir -p rootfs
+          docker run --rm -v "$PWD:/out" alpine:3.19 sh -c '
+            apk add --no-cache gcc musl-dev
+            mkdir -p /b
+            # a trivial shared object exporting answer()
+            printf "int answer(void){return 42;}\n" > /b/trivial.c
+            gcc -shared -fPIC -o /b/libtrivial.so /b/trivial.c
+            # a dynamic program that dlopens it (musl dynamic, needs ld-musl).
+            # Build probe.c with printf lines (no heredoc -> no YAML/indent trap).
+            printf "%s\n" \
+              "#include <stdio.h>" \
+              "#include <dlfcn.h>" \
+              "int main(int argc, char **argv){" \
+              "  const char *so = argc>1 ? argv[1] : \"/libtrivial.so\";" \
+              "  void *h = dlopen(so, RTLD_NOW);" \
+              "  if(!h){ printf(\"DLOPEN_NULL %s: %s\\n\", so, dlerror()); return 1; }" \
+              "  printf(\"DLOPEN_OK %s\\n\", so);" \
+              "  void *f = dlsym(h, \"answer\");" \
+              "  if(f){ printf(\"answer=%d\\n\", ((int(*)(void))f)()); }" \
+              "  return 0;" \
+              "}" > /b/probe.c
+            gcc -o /b/probe /b/probe.c -ldl
+            # build the probe INTO the wine rootfs so the real ntdll.so + its
+            # whole dependency chain are present to dlopen.
+            apk add --no-cache --root /rootfs --initdb \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/main \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/community \
+              --allow-untrusted \
+              alpine-baselayout busybox musl wine || true
+            cp /b/probe /rootfs/probe
+            cp /b/libtrivial.so /rootfs/libtrivial.so
+            echo "=== ntdll.so present? ==="; ls -l /rootfs/usr/lib/wine/x86_64-unix/ntdll.so || echo MISSING
+            tar -C /rootfs -cf /out/dlopen-rootfs.tar .
+          '
+          ls -lh dlopen-rootfs.tar
+
+      - uses: actions/checkout@v4
+        with:
+          repository: AnEntrypoint/webix
+          path: webix
+      - name: Install webix
+        working-directory: webix
+        run: npm install
+
+      - name: Run dlopen probe (trivial .so, then real wine ntdll.so)
+        continue-on-error: true
+        run: |
+          {
+            echo "### trivial .so"
+            node tools/spikes/dlopen-probe.mjs "$PWD/webix" "$PWD/dlopen-rootfs.tar" "/libtrivial.so" || true
+            echo "### real wine ntdll.so"
+            node tools/spikes/dlopen-probe.mjs "$PWD/webix" "$PWD/dlopen-rootfs.tar" "/usr/lib/wine/x86_64-unix/ntdll.so" || true
+          } > dlopen-output.txt 2>&1
+          cat dlopen-output.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dlopen-probe
+          path: dlopen-output.txt
+          if-no-files-found: warn
+
+      - name: Surface dlopen verdict
+        run: |
+          echo "## blink dlopen probe" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat dlopen-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(none)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  spike:
+    name: Run Wine64 under blink
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Alpine + Wine64 rootfs (apk in a container)
+        run: |
+          set -eux
+          mkdir -p rootfs
+          # Use the official Alpine image's apk to install wine into ./rootfs.
+          # Alpine v3.19 community ships wine for x86_64 (pkgs.alpinelinux.org).
+          # Install wine into /rootfs AND tar it from inside the container, so
+          # root-owned files (etc/shadow, root/) are readable by the archiver.
+          docker run --rm -v "$PWD:/out" alpine:3.19 sh -c '
+            mkdir -p /rootfs
+            apk add --no-cache --root /rootfs --initdb \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/main \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/community \
+              --allow-untrusted \
+              alpine-baselayout busybox musl wine || true
+            ls -la /rootfs/usr/bin/ | grep -i wine || echo "NO wine binary in rootfs"
+            echo "=== wine lib layout ==="; find /rootfs -name "ntdll*" -o -name "wine64*" -o -name "wine-preloader" 2>/dev/null | head -40
+            echo "=== file type of wine launcher ==="; file /rootfs/usr/bin/wine /rootfs/usr/bin/wine64 2>/dev/null || true
+            # blink cannot inject guest env -> bake the Wine loader config into
+            # the rootfs so a direct runElf(wine64) picks it up.
+            mkdir -p /rootfs/etc
+            printf "%s\n" \
+              "WINEDLLPATH=/usr/lib/wine/x86_64-windows:/usr/lib/wine/x86_64-unix" \
+              "LD_LIBRARY_PATH=/usr/lib/wine/x86_64-unix:/usr/lib" \
+              "WINEDEBUG=+loaddll,+module" \
+              "WINEPREFIX=/root/.wine" > /rootfs/etc/environment
+            tar -C /rootfs -cf /out/alpine-wine64.tar .
+          '
+          ls -lh alpine-wine64.tar
+
+      - name: Build a trivial Win64 PE to LoadLibrary-test
+        run: |
+          set -eux
+          sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+          printf '#include <windows.h>\nint main(void){return 7;}\n' > trivial.c
+          x86_64-w64-mingw32-gcc -o trivial.exe trivial.c
+          ls -lh trivial.exe
+
+      - name: Checkout webix engine
+        uses: actions/checkout@v4
+        with:
+          repository: AnEntrypoint/webix
+          path: webix
+
+      - name: Install webix
+        working-directory: webix
+        run: npm install
+
+      - name: Run the spike harness
+        id: spike
+        continue-on-error: true
+        run: |
+          node tools/spikes/wine-under-blink.mjs \
+            "$PWD/webix" "$PWD/alpine-wine64.tar" "$PWD/trivial.exe" \
+            > spike-output.txt 2>&1; echo "harness exit: $?" >> spike-output.txt
+          cat spike-output.txt
+
+      - name: Upload spike output + rootfs
+        uses: actions/upload-artifact@v4
+        with:
+          name: wine-under-blink-spike
+          path: |
+            spike-output.txt
+            alpine-wine64.tar
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Surface verdict
+        run: |
+          echo "## Wine-under-blink spike" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat spike-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no output)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

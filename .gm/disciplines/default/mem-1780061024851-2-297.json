@@ -1,0 +1,3 @@
+## Resolved mutable: current-stack-runs-at-all
+
+dist/ empty (ls dist shows nothing); v86 not in node_modules (ls node_modules/v86 => not installed); smoke-test.mjs only calls audioWorklet.addModule and asserts no error, never boots v86/loads plugin/processes audio. No end-to-end run has occurred.
